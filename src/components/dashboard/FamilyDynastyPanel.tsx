@@ -80,20 +80,33 @@ function generateCode() {
   return `PALM${digits}`;
 }
 
+const GROUP_CATEGORIES = [
+  { value: 'family',       label: 'Family',            desc: 'Direct family members',     icon: '🏠', type: 'family' as const },
+  { value: 'church',       label: 'Church / Religious', desc: 'Faith or worship community', icon: '⛪', type: 'group'  as const },
+  { value: 'friends',      label: 'Friends Clique',     desc: 'Close friends group',        icon: '🤝', type: 'group'  as const },
+  { value: 'community',    label: 'Community',          desc: 'Neighbourhood or village',   icon: '🏘️', type: 'group'  as const },
+  { value: 'organization', label: 'Organization',       desc: 'Business, NGO or cooperative', icon: '🏢', type: 'group' as const },
+  { value: 'club',         label: 'Club / Sports',      desc: 'Sports or hobby group',      icon: '⚽', type: 'group'  as const },
+  { value: 'other',        label: 'Other',              desc: 'Something else',             icon: '🌟', type: 'group'  as const },
+] as const;
+
 export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelProps) {
   const { user, profile, refreshProfile } = useAuth();
   const displayName = profile?.display_name || 'there';
 
-  const [group, setGroup] = useState<GroupData | null>(null);
+  const [allGroups, setAllGroups] = useState<GroupData[]>([]);
+  const [activeGroupId, setActiveGroupId] = useState<string | null>(null);
+  const group = allGroups.find(g => g.id === activeGroupId) ?? null;
   const [members, setMembers] = useState<MemberData[]>([]);
   const [joinRequests, setJoinRequests] = useState<JoinRequest[]>([]);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<ActiveTab>('overview');
 
-  // Create group
-  const [creatingGroup, setCreatingGroup] = useState(false);
+  // Create group — multi-step (category → name)
+  const [creatingGroupStep, setCreatingGroupStep] = useState<null | 'category' | 'name'>(null);
   const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupCategory, setNewGroupCategory] = useState('');
   const [groupSaving, setGroupSaving] = useState(false);
 
   // Join flow
@@ -144,42 +157,47 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
     if (user) loadData();
   }, [user]);
 
-  const loadData = async () => {
+  const loadData = async (targetGroupId?: string) => {
     if (!user) return;
     setLoading(true);
     try {
-      // Find group where user is head OR is a linked member
+      // Load all groups where user is head/owner
       const { data: ownGroups } = await supabase
         .from('farming_groups')
         .select('*')
         .or(`user_id.eq.${user.id},head_user_id.eq.${user.id}`)
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .order('created_at', { ascending: false });
 
-      let foundGroup: GroupData | null = null;
+      let foundGroups: GroupData[] = (ownGroups || []) as GroupData[];
 
-      if (ownGroups && ownGroups.length > 0) {
-        foundGroup = ownGroups[0] as GroupData;
-      } else {
-        // Check if user is a linked member of any group
-        const { data: memberLinks } = await supabase
-          .from('group_members')
-          .select('group_id')
-          .eq('linked_user_id', user.id)
-          .limit(1);
+      // Also load groups where user is a linked member (but not head)
+      const { data: memberLinks } = await supabase
+        .from('group_members')
+        .select('group_id')
+        .eq('linked_user_id', user.id);
 
-        if (memberLinks && memberLinks.length > 0) {
-          const { data: linkedGroup } = await supabase
+      if (memberLinks && memberLinks.length > 0) {
+        const ownIds = new Set(foundGroups.map(g => g.id));
+        const foreignIds = memberLinks.map(m => m.group_id).filter(id => !ownIds.has(id));
+        if (foreignIds.length > 0) {
+          const { data: linkedGroups } = await supabase
             .from('farming_groups')
             .select('*')
-            .eq('id', memberLinks[0].group_id)
-            .maybeSingle();
-
-          if (linkedGroup) foundGroup = linkedGroup as GroupData;
+            .in('id', foreignIds);
+          foundGroups = [...foundGroups, ...((linkedGroups || []) as GroupData[])];
         }
       }
 
-      setGroup(foundGroup);
+      setAllGroups(foundGroups);
+
+      // Resolve which group to display
+      const resolvedId = targetGroupId
+        ?? (activeGroupId && foundGroups.find(g => g.id === activeGroupId) ? activeGroupId : null)
+        ?? foundGroups[0]?.id
+        ?? null;
+      setActiveGroupId(resolvedId);
+
+      const foundGroup = foundGroups.find(g => g.id === resolvedId) ?? null;
 
       if (foundGroup) {
         const [{ data: memberData }, { data: requestData }] = await Promise.all([
@@ -260,7 +278,7 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       .insert({
         user_id: user.id,
         head_user_id: user.id,
-        group_type: 'family',
+        group_type: GROUP_CATEGORIES.find(c => c.value === newGroupCategory)?.type ?? 'family',
         group_name: newGroupName.trim(),
         total_seeds: 0,
       })
@@ -268,9 +286,12 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       .single();
 
     if (!error && data) {
-      setGroup(data as GroupData);
+      const newGroup = data as GroupData;
+      setAllGroups((prev: GroupData[]) => [newGroup, ...prev.filter((g: GroupData) => g.id !== newGroup.id)]);
+      setActiveGroupId(newGroup.id);
       setNewGroupName('');
-      setCreatingGroup(false);
+      setNewGroupCategory('');
+      setCreatingGroupStep(null);
     }
     setGroupSaving(false);
   };
@@ -499,7 +520,7 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       .from('farming_groups')
       .update({ head_user_id: member.linked_user_id })
       .eq('id', group.id);
-    setGroup(prev => prev ? { ...prev, head_user_id: member.linked_user_id } : prev);
+    setAllGroups((prev: GroupData[]) => prev.map((g: GroupData) => g.id === group.id ? { ...g, head_user_id: member.linked_user_id } : g));
     setCrownTarget(null);
     setCrownLoading(false);
     // Notify new head
@@ -609,36 +630,68 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
           <div className="space-y-4">
             {/* Create group */}
             <div className="border border-grove-200 rounded-xl p-4 bg-grove-50/40">
-              <p className="text-sm font-semibold text-gray-800 mb-1">Start a family group</p>
-              <p className="text-xs text-gray-500 mb-3">Create your family farm and invite everyone to grow together.</p>
-              {!creatingGroup ? (
+              <p className="text-sm font-semibold text-gray-800 mb-1">Start a group</p>
+              <p className="text-xs text-gray-500 mb-3">Create a family, church group, friends clique, or any collective — and farm together.</p>
+
+              {creatingGroupStep === null && (
                 <button
-                  onClick={() => setCreatingGroup(true)}
+                  onClick={() => setCreatingGroupStep('category')}
                   className="flex items-center gap-2 px-4 py-2 rounded-lg bg-grove-600 text-white text-sm font-semibold hover:bg-grove-700 transition-colors"
                 >
-                  <Plus className="w-4 h-4" /> Create My Family Group
+                  <Plus className="w-4 h-4" /> Create a Group
                 </button>
-              ) : (
-                <div className="flex gap-2">
-                  <input
-                    autoFocus
-                    type="text"
-                    value={newGroupName}
-                    onChange={e => setNewGroupName(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') handleCreateGroup(); }}
-                    placeholder="e.g. The Adeyemi Farm"
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-grove-500 focus:border-transparent"
-                  />
-                  <button
-                    onClick={handleCreateGroup}
-                    disabled={groupSaving || !newGroupName.trim()}
-                    className="px-4 py-2 rounded-lg bg-grove-600 text-white text-sm font-semibold hover:bg-grove-700 disabled:opacity-50 transition-colors"
-                  >
-                    {groupSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
-                  </button>
-                  <button onClick={() => setCreatingGroup(false)} className="px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-sm">
-                    <X className="w-4 h-4" />
-                  </button>
+              )}
+
+              {creatingGroupStep === 'category' && (
+                <div className="space-y-3">
+                  <p className="text-xs font-semibold text-gray-600">What best describes this group?</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {GROUP_CATEGORIES.map(cat => (
+                      <button
+                        key={cat.value}
+                        onClick={() => { setNewGroupCategory(cat.value); setCreatingGroupStep('name'); }}
+                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 border-gray-200 hover:border-grove-400 hover:bg-grove-50 text-left transition-all"
+                      >
+                        <span className="text-lg leading-none">{cat.icon}</span>
+                        <div>
+                          <p className="text-xs font-semibold text-gray-800 leading-tight">{cat.label}</p>
+                          <p className="text-[10px] text-gray-400 leading-tight">{cat.desc}</p>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={() => setCreatingGroupStep(null)} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">Cancel</button>
+                </div>
+              )}
+
+              {creatingGroupStep === 'name' && (
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">{GROUP_CATEGORIES.find(c => c.value === newGroupCategory)?.icon}</span>
+                    <p className="text-xs font-semibold text-gray-700">{GROUP_CATEGORIES.find(c => c.value === newGroupCategory)?.label}</p>
+                    <button onClick={() => setCreatingGroupStep('category')} className="text-xs text-grove-600 hover:underline ml-auto">Change</button>
+                  </div>
+                  <div className="flex gap-2">
+                    <input
+                      autoFocus
+                      type="text"
+                      value={newGroupName}
+                      onChange={e => setNewGroupName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') handleCreateGroup(); }}
+                      placeholder={newGroupCategory === 'family' ? 'e.g. The Adeyemi Family' : newGroupCategory === 'church' ? 'e.g. RCCG Youth Farm' : 'e.g. Our Group Name'}
+                      className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-grove-500 focus:border-transparent"
+                    />
+                    <button
+                      onClick={handleCreateGroup}
+                      disabled={groupSaving || !newGroupName.trim()}
+                      className="px-4 py-2 rounded-lg bg-grove-600 text-white text-sm font-semibold hover:bg-grove-700 disabled:opacity-50 transition-colors"
+                    >
+                      {groupSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                    </button>
+                    <button onClick={() => { setCreatingGroupStep(null); setNewGroupName(''); setNewGroupCategory(''); }} className="px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100 text-sm">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
               )}
             </div>
@@ -789,20 +842,99 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
         {/* Header */}
         <div className="bg-gradient-to-r from-grove-700 to-grove-600 px-5 py-4">
           <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center">
-                <Users className="w-5 h-5 text-white" />
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-9 h-9 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+                <span className="text-lg leading-none">{GROUP_CATEGORIES.find(c => c.value === (group.group_type === 'family' ? 'family' : 'group'))?.icon ?? '👥'}</span>
               </div>
-              <div>
-                <h2 className="text-base font-bold text-white">{group.group_name}</h2>
+              <div className="min-w-0">
+                <h2 className="text-base font-bold text-white truncate">{group.group_name}</h2>
                 <p className="text-xs text-grove-200">
                   {members.length} member{members.length !== 1 ? 's' : ''} · {totalPlants} plant{totalPlants !== 1 ? 's' : ''}
-                  {isHead && <span className="ml-2 bg-warmth-400/30 text-warmth-100 text-[10px] px-1.5 py-0.5 rounded-full font-semibold">You're the head 👑</span>}
+                  {isHead && <span className="ml-2 bg-warmth-400/30 text-warmth-100 text-[10px] px-1.5 py-0.5 rounded-full font-semibold">Head 👑</span>}
                 </p>
               </div>
             </div>
+            <button
+              onClick={() => { setCreatingGroupStep('category'); }}
+              className="flex-shrink-0 flex items-center gap-1 bg-white/15 hover:bg-white/25 text-white text-xs font-semibold px-3 py-1.5 rounded-full transition-colors"
+              title="Create another group"
+            >
+              <Plus className="w-3.5 h-3.5" /> New Group
+            </button>
           </div>
+
+          {/* Group switcher — shown when user is in multiple groups */}
+          {allGroups.length > 1 && (
+            <div className="flex gap-1.5 px-5 pb-3 overflow-x-auto">
+              {allGroups.map((g: GroupData) => (
+                <button
+                  key={g.id}
+                  onClick={() => loadData(g.id)}
+                  className={`flex-shrink-0 text-xs font-semibold px-3 py-1 rounded-full transition-colors ${
+                    g.id === activeGroupId
+                      ? 'bg-white text-grove-800'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
+                >
+                  {g.group_name}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
+
+        {/* "Create new group" inline form — shown when triggered from within the panel */}
+        {creatingGroupStep !== null && (
+          <div className="border-b border-grove-100 bg-grove-50/60 px-5 py-4">
+            {creatingGroupStep === 'category' && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold text-gray-700">What best describes this new group?</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {GROUP_CATEGORIES.map(cat => (
+                    <button
+                      key={cat.value}
+                      onClick={() => { setNewGroupCategory(cat.value); setCreatingGroupStep('name'); }}
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl border-2 border-gray-200 hover:border-grove-400 hover:bg-white text-left transition-all"
+                    >
+                      <span className="text-lg leading-none">{cat.icon}</span>
+                      <div>
+                        <p className="text-xs font-semibold text-gray-800 leading-tight">{cat.label}</p>
+                        <p className="text-[10px] text-gray-400 leading-tight">{cat.desc}</p>
+                      </div>
+                    </button>
+                  ))}
+                </div>
+                <button onClick={() => { setCreatingGroupStep(null); setNewGroupCategory(''); }} className="text-xs text-gray-400 hover:text-gray-600">Cancel</button>
+              </div>
+            )}
+            {creatingGroupStep === 'name' && (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-lg">{GROUP_CATEGORIES.find(c => c.value === newGroupCategory)?.icon}</span>
+                  <p className="text-xs font-semibold text-gray-700">{GROUP_CATEGORIES.find(c => c.value === newGroupCategory)?.label}</p>
+                  <button onClick={() => setCreatingGroupStep('category')} className="text-xs text-grove-600 hover:underline ml-auto">Change</button>
+                </div>
+                <div className="flex gap-2">
+                  <input
+                    autoFocus
+                    type="text"
+                    value={newGroupName}
+                    onChange={e => setNewGroupName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') handleCreateGroup(); }}
+                    placeholder={newGroupCategory === 'family' ? 'e.g. The Adeyemi Family' : newGroupCategory === 'church' ? 'e.g. RCCG Youth Farm' : 'e.g. Group Name'}
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-grove-500 focus:border-transparent"
+                  />
+                  <button onClick={handleCreateGroup} disabled={groupSaving || !newGroupName.trim()} className="px-4 py-2 rounded-lg bg-grove-600 text-white text-sm font-semibold hover:bg-grove-700 disabled:opacity-50 transition-colors">
+                    {groupSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                  </button>
+                  <button onClick={() => { setCreatingGroupStep(null); setNewGroupName(''); setNewGroupCategory(''); }} className="px-3 py-2 rounded-lg text-gray-500 hover:bg-gray-100">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Tabs */}
         <div className="flex border-b border-gray-100">
