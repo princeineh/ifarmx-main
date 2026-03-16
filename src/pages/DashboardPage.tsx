@@ -4,7 +4,7 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Leaf, Plus, Menu, X, Users as UsersIcon, Sprout,
   UsersRound, Store, MessageSquare, Sun, Package, Globe, Shield,
-  Key, ArrowRight, Trophy, Copy, Check, Timer, Mail, FlaskConical
+  Key, ArrowRight, Trophy, Copy, Check, Timer, Mail, FlaskConical, Rocket
 } from 'lucide-react';
 import type { Plant, CareLog, UserType } from '../types/database';
 import { DailyReminder } from '../components/dashboard/DailyReminder';
@@ -418,6 +418,33 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
             setTourPhase('none');
           }}
         />
+      )}
+
+      {tourPhase === 'demo_guide' && (
+        <div className="bg-amber-50 border-b-2 border-amber-300">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-8 h-8 bg-amber-200 rounded-full flex items-center justify-center flex-shrink-0">
+                <FlaskConical className="w-4 h-4 text-amber-700" />
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-bold text-amber-900">You're in Demo Mode</p>
+                <p className="text-xs text-amber-700 hidden sm:block">These are sample plants — explore freely. When you're ready, exit to start your real farm.</p>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                sessionStorage.removeItem('ifarmx_demo_guide');
+                setTourPhase('none');
+              }}
+              className="flex-shrink-0 flex items-center gap-2 bg-grove-600 hover:bg-grove-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors shadow-sm"
+            >
+              <Rocket className="w-4 h-4" />
+              <span className="hidden sm:inline">Exit Demo &amp; Start for Real</span>
+              <span className="sm:hidden">Exit Demo</span>
+            </button>
+          </div>
+        </div>
       )}
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
