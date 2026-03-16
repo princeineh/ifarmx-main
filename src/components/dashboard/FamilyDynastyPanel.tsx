@@ -1066,6 +1066,20 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                   })}
                 </div>
               )}
+
+              {/* Create / switch groups — always visible at bottom of overview */}
+              <div className="border-t border-gray-100 pt-3 flex items-center justify-between">
+                <p className="text-xs text-gray-400">
+                  {allGroups.length > 1 ? `You're in ${allGroups.length} groups` : 'Want another group?'}
+                </p>
+                <button
+                  onClick={() => setCreatingGroupStep('category')}
+                  className="flex items-center gap-1.5 text-xs font-semibold text-grove-600 hover:text-grove-800 transition-colors"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {allGroups.length > 1 ? 'Create Another' : 'Create New Group'}
+                </button>
+              </div>
             </motion.div>
           )}
 
