@@ -6,7 +6,7 @@ import {
   Users, Plus, Trash2, Edit3, Check, X, Loader2, Leaf, Phone,
   ChevronRight, ChevronDown, ChevronUp, TreePine, UserPlus, BarChart3,
   Crown, Copy, RefreshCw, Send, MessageSquare, Bell, Link, AlertCircle,
-  CheckCircle2, XCircle, ClipboardCopy, UserCheck, Baby
+  CheckCircle2, XCircle, ClipboardCopy, UserCheck, Baby, Pencil
 } from 'lucide-react';
 import type { Plant } from '../../types/database';
 import { createNotification } from '../../services/notifications';
@@ -81,7 +81,7 @@ function generateCode() {
 }
 
 export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelProps) {
-  const { user, profile } = useAuth();
+  const { user, profile, refreshProfile } = useAuth();
   const displayName = profile?.display_name || 'there';
 
   const [group, setGroup] = useState<GroupData | null>(null);
@@ -102,9 +102,16 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
   const [joinError, setJoinError] = useState('');
   const [joinSuccess, setJoinSuccess] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
+  const [joinPreview, setJoinPreview] = useState<{ inviteId: string; groupId: string; groupName: string } | null>(null);
+  const [joinRelationship, setJoinRelationship] = useState('');
   const [requestMessage, setRequestMessage] = useState('');
   const [requestSent, setRequestSent] = useState(false);
   const [requestLoading, setRequestLoading] = useState(false);
+
+  // Relationship editing (head only)
+  const [editingRelationshipId, setEditingRelationshipId] = useState<string | null>(null);
+  const [editingRelationshipValue, setEditingRelationshipValue] = useState('');
+  const [savingRelationship, setSavingRelationship] = useState(false);
 
   // Members tab
   const [editing, setEditing] = useState(false);
@@ -268,9 +275,9 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
     setGroupSaving(false);
   };
 
-  // ── Join via invite code ──────────────────────────────────────────────────────
+  // ── Join via invite code — Step 1: validate & preview ────────────────────────
 
-  const handleJoinByCode = async () => {
+  const handleLookupCode = async () => {
     if (!user || !inviteCode.trim()) return;
     setJoinLoading(true);
     setJoinError('');
@@ -299,26 +306,109 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       return;
     }
 
-    // Mark invite used
+    const { data: grp } = await supabase
+      .from('farming_groups')
+      .select('group_name')
+      .eq('id', invite.group_id)
+      .maybeSingle();
+
+    setJoinPreview({
+      inviteId: invite.id,
+      groupId: invite.group_id,
+      groupName: grp?.group_name || 'this family',
+    });
+    setJoinLoading(false);
+  };
+
+  // ── Join via invite code — Step 2: confirm join ───────────────────────────────
+
+  const handleConfirmJoin = async () => {
+    if (!user || !joinPreview) return;
+    setJoinLoading(true);
+
     await supabase
       .from('family_invites')
       .update({ used_by_user_id: user.id, used_at: new Date().toISOString() })
-      .eq('id', invite.id);
+      .eq('id', joinPreview.inviteId);
 
-    // Add as linked member
+    const joinerName = profile?.display_name || user.email || 'Family Member';
+
     await supabase.from('group_members').insert({
-      group_id: invite.group_id,
-      name: profile?.display_name || user.email || 'Family Member',
-      relationship: null,
+      group_id: joinPreview.groupId,
+      name: joinerName,
+      relationship: joinRelationship.trim() || null,
       seeds_allocated: 0,
       phone: profile?.phone_number || null,
       linked_user_id: user.id,
       is_custodian_child: false,
     });
 
-    setJoinSuccess("You've joined the family! Welcome home 🌱");
+    await supabase
+      .from('user_profiles')
+      .update({ user_type: 'family' })
+      .eq('id', user.id);
+
+    const { data: grpData } = await supabase
+      .from('farming_groups')
+      .select('head_user_id')
+      .eq('id', joinPreview.groupId)
+      .maybeSingle();
+
+    if (grpData?.head_user_id) {
+      createNotification(
+        grpData.head_user_id,
+        'system',
+        'New Family Member 🌱',
+        `${joinerName} has joined ${joinPreview.groupName}${joinRelationship.trim() ? ' as ' + joinRelationship.trim() : ''}. Go to Members to assign kits.`
+      );
+    }
+
+    const { data: linkedMembers } = await supabase
+      .from('group_members')
+      .select('linked_user_id')
+      .eq('group_id', joinPreview.groupId)
+      .not('linked_user_id', 'is', null);
+
+    for (const m of (linkedMembers || [])) {
+      if (m.linked_user_id !== user.id) {
+        createNotification(
+          m.linked_user_id,
+          'system',
+          'Family Update 🏡',
+          `${joinerName} just joined the family!`
+        );
+      }
+    }
+
+    await refreshProfile();
+    setJoinSuccess(`You've joined ${joinPreview.groupName}! Welcome home 🌱`);
+    setJoinPreview(null);
+    setJoinRelationship('');
     await loadData();
     setJoinLoading(false);
+  };
+
+  // ── Head: save relationship for a member ──────────────────────────────────────
+
+  const handleSaveRelationship = async (memberId: string) => {
+    setSavingRelationship(true);
+    await supabase
+      .from('group_members')
+      .update({ relationship: editingRelationshipValue.trim() || null })
+      .eq('id', memberId);
+
+    const member = members.find(m => m.id === memberId);
+    if (member?.linked_user_id && editingRelationshipValue.trim()) {
+      createNotification(
+        member.linked_user_id,
+        'system',
+        'Family Role Updated',
+        `${displayName} has set your family role to "${editingRelationshipValue.trim()}".`
+      );
+    }
+    setEditingRelationshipId(null);
+    setSavingRelationship(false);
+    await loadData();
   };
 
   // ── Send join request ─────────────────────────────────────────────────────────
@@ -584,27 +674,60 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                         {/* Invite code option */}
                         <div>
                           <p className="text-xs font-semibold text-gray-700 mb-2">Option A — Enter invite code</p>
-                          <div className="flex gap-2">
-                            <input
-                              type="text"
-                              value={inviteCode}
-                              onChange={e => { setInviteCode(e.target.value); setJoinError(''); }}
-                              placeholder="e.g. PALM4829"
-                              className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-warmth-400 focus:border-transparent uppercase tracking-widest"
-                              maxLength={8}
-                            />
-                            <button
-                              onClick={handleJoinByCode}
-                              disabled={joinLoading || !inviteCode.trim()}
-                              className="px-4 py-2 rounded-lg bg-warmth-500 text-white text-sm font-semibold hover:bg-warmth-600 disabled:opacity-50 transition-colors"
-                            >
-                              {joinLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Join'}
-                            </button>
-                          </div>
-                          {joinError && (
-                            <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
-                              <AlertCircle className="w-3.5 h-3.5" /> {joinError}
-                            </p>
+                          {joinPreview ? (
+                            <div className="space-y-3 p-3 bg-grove-50 border border-grove-200 rounded-xl">
+                              <div>
+                                <p className="text-xs text-gray-500">You're joining</p>
+                                <p className="text-sm font-bold text-grove-800">{joinPreview.groupName}</p>
+                              </div>
+                              <input
+                                type="text"
+                                value={joinRelationship}
+                                onChange={e => setJoinRelationship(e.target.value)}
+                                placeholder="Your role e.g. Son, Daughter, Spouse (optional)"
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-grove-500 focus:border-transparent"
+                              />
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={handleConfirmJoin}
+                                  disabled={joinLoading}
+                                  className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-grove-600 text-white text-sm font-semibold hover:bg-grove-700 disabled:opacity-50 transition-colors"
+                                >
+                                  {joinLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm & Join'}
+                                </button>
+                                <button
+                                  onClick={() => { setJoinPreview(null); setJoinRelationship(''); setJoinError(''); }}
+                                  className="px-3 py-2 rounded-lg text-gray-500 text-sm hover:bg-gray-100 transition-colors"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="flex gap-2">
+                                <input
+                                  type="text"
+                                  value={inviteCode}
+                                  onChange={e => { setInviteCode(e.target.value); setJoinError(''); }}
+                                  placeholder="e.g. PALM4829"
+                                  className="flex-1 px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-warmth-400 focus:border-transparent uppercase tracking-widest"
+                                  maxLength={8}
+                                />
+                                <button
+                                  onClick={handleLookupCode}
+                                  disabled={joinLoading || !inviteCode.trim()}
+                                  className="px-4 py-2 rounded-lg bg-warmth-500 text-white text-sm font-semibold hover:bg-warmth-600 disabled:opacity-50 transition-colors"
+                                >
+                                  {joinLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Look Up'}
+                                </button>
+                              </div>
+                              {joinError && (
+                                <p className="text-xs text-red-500 mt-1.5 flex items-center gap-1">
+                                  <AlertCircle className="w-3.5 h-3.5" /> {joinError}
+                                </p>
+                              )}
+                            </>
                           )}
                         </div>
 
@@ -840,8 +963,42 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                             <Crown className="w-3.5 h-3.5 text-warmth-500" />
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          {member.relationship && <span className="text-[10px] text-gray-500">{member.relationship}</span>}
+                        <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          {editingRelationshipId === member.id ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                autoFocus
+                                type="text"
+                                value={editingRelationshipValue}
+                                onChange={e => setEditingRelationshipValue(e.target.value)}
+                                placeholder="e.g. Son, Daughter"
+                                className="w-28 px-1.5 py-0.5 border border-grove-300 rounded text-[11px] focus:ring-1 focus:ring-grove-400 focus:border-transparent"
+                                onKeyDown={e => { if (e.key === 'Enter') handleSaveRelationship(member.id); if (e.key === 'Escape') setEditingRelationshipId(null); }}
+                              />
+                              <button onClick={() => handleSaveRelationship(member.id)} disabled={savingRelationship} className="p-0.5 text-grove-600 hover:text-grove-800">
+                                {savingRelationship ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
+                              </button>
+                              <button onClick={() => setEditingRelationshipId(null)} className="p-0.5 text-gray-400 hover:text-gray-600">
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              {member.relationship
+                                ? <span className="text-[10px] text-gray-500">{member.relationship}</span>
+                                : isHead && <span className="text-[10px] text-gray-300 italic">no role set</span>
+                              }
+                              {isHead && (
+                                <button
+                                  onClick={() => { setEditingRelationshipId(member.id); setEditingRelationshipValue(member.relationship || ''); }}
+                                  className="p-0.5 text-gray-300 hover:text-grove-500 transition-colors"
+                                  title="Edit relationship"
+                                >
+                                  <Pencil className="w-2.5 h-2.5" />
+                                </button>
+                              )}
+                            </div>
+                          )}
                           <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
                             member.linked_user_id ? 'bg-grove-100 text-grove-700' : 'bg-gray-100 text-gray-500'
                           }`}>
