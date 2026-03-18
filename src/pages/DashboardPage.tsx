@@ -54,6 +54,7 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
   const [tourPhase, setTourPhase] = useState<'none' | 'modal' | 'spotlight' | 'demo_guide'>('none');
   const spotlightPathRef = useRef<UserType | null>(null);
   const [reservation, setReservation] = useState<{ kit_count: string; created_at: string; join_as?: string; slots?: number } | null>(null);
+  const [isLinkedToFamilyGroup, setIsLinkedToFamilyGroup] = useState(false);
   const [testBannerDismissed, setTestBannerDismissed] = useState(() =>
     sessionStorage.getItem('ifarmx_test_banner_dismissed') === '1'
   );
@@ -153,6 +154,12 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
     } else {
       setPendingKitCodes([]);
     }
+
+    const { count: memberCount } = await supabase
+      .from('group_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('linked_user_id', user.id);
+    setIsLinkedToFamilyGroup((memberCount ?? 0) > 0);
 
     setLoading(false);
   };
@@ -495,11 +502,13 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
                     <UsersIcon className="w-4 h-4 text-warmth-300" />
                   ) : profile?.user_type === 'family' ? (
                     <UsersRound className="w-4 h-4 text-warmth-300" />
+                  ) : isLinkedToFamilyGroup ? (
+                    <UsersRound className="w-4 h-4 text-warmth-300" />
                   ) : (
                     <Sprout className="w-4 h-4 text-grove-300" />
                   )}
                   <span className="text-xs font-semibold text-white/90">
-                    {profile?.user_type === 'organization' ? 'Organization' : profile?.user_type === 'family' ? 'Family / Group' : 'Individual Farmer'}
+                    {profile?.user_type === 'organization' ? 'Organization' : profile?.user_type === 'family' ? 'Family / Group' : isLinkedToFamilyGroup ? 'Family Member' : 'Individual Farmer'}
                   </span>
                 </div>
               </div>
@@ -602,20 +611,18 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
           </div>
         )}
 
-        {profile?.user_type !== 'family' && (
-          <div data-tour="kit-overview">
-            <SoloFarmStats
-              displayName={displayName}
-              plants={plants}
-              weeklyLogs={weeklyLogs}
-              kitCount={kitCount}
-              onBuyKit={() => onNavigate('kit-purchase')}
-              onActivateKit={() => onNavigate('activate')}
-            />
-          </div>
-        )}
+        <div data-tour="kit-overview">
+          <SoloFarmStats
+            displayName={displayName}
+            plants={plants}
+            weeklyLogs={weeklyLogs}
+            kitCount={kitCount}
+            onBuyKit={() => onNavigate('kit-purchase')}
+            onActivateKit={() => onNavigate('activate')}
+          />
+        </div>
 
-        {profile?.user_type === 'family' && (
+        {(profile?.user_type === 'family' || isLinkedToFamilyGroup) && (
           <div data-tour="family-panel">
             <FamilyDynastyPanel plants={plants} onNavigate={onNavigate} />
           </div>

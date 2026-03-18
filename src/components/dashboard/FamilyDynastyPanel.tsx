@@ -403,11 +403,6 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       is_custodian_child: false,
     });
 
-    await supabase
-      .from('user_profiles')
-      .update({ user_type: 'family' })
-      .eq('id', user.id);
-
     const { data: grpData } = await supabase
       .from('farming_groups')
       .select('head_user_id')

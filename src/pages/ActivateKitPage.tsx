@@ -62,13 +62,28 @@ export function ActivateKitPage({ onNavigate, onActivated, prefilledCode }: Acti
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
   const [remainingCodes, setRemainingCodes] = useState<string[]>([]);
 
-  const isFamily = profile?.user_type === 'family';
+  const [isFamily, setIsFamily] = useState(profile?.user_type === 'family');
+
+  useEffect(() => {
+    if (!user) return;
+    if (profile?.user_type === 'family') {
+      setIsFamily(true);
+      return;
+    }
+    supabase
+      .from('group_members')
+      .select('id', { count: 'exact', head: true })
+      .eq('linked_user_id', user.id)
+      .then(({ count }) => {
+        if ((count ?? 0) > 0) setIsFamily(true);
+      });
+  }, [user, profile?.user_type]);
 
   useEffect(() => {
     loadKitItems();
     if (user && isFamily) loadExistingGroup();
     else setGroupLoaded(true);
-  }, [user, profile]);
+  }, [user, isFamily]);
 
   useEffect(() => {
     if (prefilledCode && user && !autoValidated && step === 'code') {
