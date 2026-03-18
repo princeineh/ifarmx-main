@@ -169,6 +169,13 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
   const [assigningMonitorId, setAssigningMonitorId] = useState<string | null>(null);
   const [monitorSaving, setMonitorSaving] = useState(false);
 
+  // Pending kit codes (head only)
+  interface PendingCode { id: string; code: string; programId: string | null; programName: string }
+  const [pendingCodes, setPendingCodes] = useState<PendingCode[]>([]);
+  const [activatingKit, setActivatingKit] = useState<PendingCode | null>(null);
+  const [kitAssignMemberId, setKitAssignMemberId] = useState<string>('');
+  const [kitActivating, setKitActivating] = useState(false);
+
   const isHead = !!(group && user && (group.head_user_id === user.id || group.user_id === user.id));
   const myMemberEntry = members.find(m => m.linked_user_id === user?.id);
   const canChat = isHead || !!myMemberEntry?.linked_user_id;
@@ -298,6 +305,23 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
             .gte('log_date', weekStart);
           setFamilyCareLogs((logs || []) as CareLog[]);
         }
+      }
+
+      // Pending (unactivated) kit codes for the head — shown in Overview for inline activation
+      if (user) {
+        const { data: codes } = await supabase
+          .from('kit_codes')
+          .select('id, code, program_id, programs(name)')
+          .eq('assigned_to_user_id', user.id)
+          .eq('used', false);
+        setPendingCodes(
+          (codes || []).map((c: any) => ({
+            id: c.id,
+            code: c.code,
+            programId: c.program_id ?? null,
+            programName: c.programs?.name || 'Kit',
+          }))
+        );
       }
     } finally {
       setLoading(false);
@@ -495,6 +519,57 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
     }
     setAssigningMonitorId(null);
     setMonitorSaving(false);
+    await loadData();
+  };
+
+  // ── Activate kit inline ──────────────────────────────────────────────────────
+
+  const handleActivateKit = async () => {
+    if (!activatingKit || !group || !user) return;
+    setKitActivating(true);
+    const now = new Date().toISOString();
+
+    // Mark kit code as used
+    await supabase
+      .from('kit_codes')
+      .update({ used: true, user_id: user.id, activated_at: now })
+      .eq('id', activatingKit.id);
+
+    const selectedMember = members.find(m => m.id === kitAssignMemberId) || null;
+    const memberName = selectedMember?.name || displayName;
+
+    // Create plant record
+    await supabase.from('plants').insert({
+      user_id: user.id,
+      kit_code_id: activatingKit.id,
+      program_id: activatingKit.programId,
+      name: `${memberName}'s Palm`,
+      stage: 'nursery',
+      planted_date: now.split('T')[0],
+      farming_type: group.group_type,
+      farming_group_id: group.id,
+      group_member_id: selectedMember?.id || null,
+    });
+
+    // Update group total seeds
+    await supabase
+      .from('farming_groups')
+      .update({ total_seeds: (group.total_seeds || 0) + 3 })
+      .eq('id', group.id);
+
+    // Notify the assigned member if they're a linked user
+    if (selectedMember?.linked_user_id && selectedMember.linked_user_id !== user.id) {
+      createNotification(
+        selectedMember.linked_user_id,
+        'system',
+        'Kit Activated for You! 🌱',
+        `${displayName} activated a palm kit in your name. Check the family dashboard to start logging care.`
+      );
+    }
+
+    setActivatingKit(null);
+    setKitAssignMemberId('');
+    setKitActivating(false);
     await loadData();
   };
 
@@ -1210,6 +1285,112 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                   </div>
                 );
               })()}
+
+              {/* Kits ready to activate — head only */}
+              {isHead && pendingCodes.length > 0 && (
+                <div className="border border-grove-200 bg-grove-50/40 rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-2 px-3.5 py-2.5 border-b border-grove-100">
+                    <TreePine className="w-4 h-4 text-grove-600" />
+                    <p className="text-xs font-bold text-grove-800 uppercase tracking-wide flex-1">
+                      {pendingCodes.length} Kit{pendingCodes.length !== 1 ? 's' : ''} Ready to Activate
+                    </p>
+                    <span className="text-[10px] text-grove-500">Tap to assign &amp; activate</span>
+                  </div>
+                  <div className="divide-y divide-grove-100">
+                    {pendingCodes.map(kit => (
+                      <div key={kit.id}>
+                        <div className="flex items-center gap-2.5 px-3.5 py-2.5">
+                          <div className="w-8 h-8 bg-grove-100 rounded-lg flex items-center justify-center flex-shrink-0">
+                            <TreePine className="w-4 h-4 text-grove-600" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-bold text-gray-900 font-mono tracking-widest">{kit.code}</p>
+                            <p className="text-[10px] text-gray-400">{kit.programName}</p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              setActivatingKit(activatingKit?.id === kit.id ? null : kit);
+                              setKitAssignMemberId('');
+                            }}
+                            className={`flex-shrink-0 text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors ${
+                              activatingKit?.id === kit.id
+                                ? 'bg-gray-100 text-gray-500'
+                                : 'bg-grove-600 text-white hover:bg-grove-700'
+                            }`}
+                          >
+                            {activatingKit?.id === kit.id ? 'Cancel' : 'Activate'}
+                          </button>
+                        </div>
+
+                        <AnimatePresence>
+                          {activatingKit?.id === kit.id && (
+                            <motion.div
+                              className="px-3.5 pb-3.5"
+                              initial={{ height: 0, opacity: 0 }}
+                              animate={{ height: 'auto', opacity: 1 }}
+                              exit={{ height: 0, opacity: 0 }}
+                              transition={{ duration: 0.15 }}
+                            >
+                              <p className="text-xs font-semibold text-gray-700 mb-2">Who is this kit for?</p>
+                              <div className="space-y-1.5 mb-3">
+                                <label className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${kitAssignMemberId === '' ? 'border-grove-400 bg-grove-50' : 'border-gray-200 hover:border-grove-200'}`}>
+                                  <input
+                                    type="radio"
+                                    name={`assign-${kit.id}`}
+                                    value=""
+                                    checked={kitAssignMemberId === ''}
+                                    onChange={() => setKitAssignMemberId('')}
+                                    className="text-grove-600"
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <Crown className="w-3.5 h-3.5 text-warmth-500" />
+                                    <span className="text-xs font-semibold text-gray-800">Myself ({displayName})</span>
+                                  </div>
+                                </label>
+                                {members.map(m => (
+                                  <label key={m.id} className={`flex items-center gap-2.5 p-2.5 rounded-lg border cursor-pointer transition-colors ${kitAssignMemberId === m.id ? 'border-grove-400 bg-grove-50' : 'border-gray-200 hover:border-grove-200'}`}>
+                                    <input
+                                      type="radio"
+                                      name={`assign-${kit.id}`}
+                                      value={m.id}
+                                      checked={kitAssignMemberId === m.id}
+                                      onChange={() => setKitAssignMemberId(m.id)}
+                                      className="text-grove-600"
+                                    />
+                                    <div className="flex items-center gap-2 min-w-0">
+                                      {m.linked_user_id && avatarMap[m.linked_user_id] ? (
+                                        <img src={avatarMap[m.linked_user_id]} alt={m.name} className="w-5 h-5 rounded-full object-cover flex-shrink-0" />
+                                      ) : (
+                                        <div className="w-5 h-5 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center flex-shrink-0">
+                                          <span className="text-[8px] font-bold text-white">{getInitials(m.name)}</span>
+                                        </div>
+                                      )}
+                                      <span className="text-xs font-semibold text-gray-800 truncate">{m.name}</span>
+                                      {m.relationship && <span className="text-[10px] text-gray-400 flex-shrink-0">{m.relationship}</span>}
+                                      {m.is_custodian_child && <Baby className="w-3 h-3 text-warmth-400 flex-shrink-0" />}
+                                    </div>
+                                  </label>
+                                ))}
+                              </div>
+                              <button
+                                onClick={handleActivateKit}
+                                disabled={kitActivating}
+                                className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-grove-600 text-white text-sm font-bold hover:bg-grove-700 disabled:opacity-50 transition-colors"
+                              >
+                                {kitActivating ? (
+                                  <><Loader2 className="w-4 h-4 animate-spin" /> Activating...</>
+                                ) : (
+                                  <><Check className="w-4 h-4" /> Activate for {kitAssignMemberId ? members.find(m => m.id === kitAssignMemberId)?.name?.split(' ')[0] : 'Myself'}</>
+                                )}
+                              </button>
+                            </motion.div>
+                          )}
+                        </AnimatePresence>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Member quick-action cards (head only) */}
               {members.length > 0 && isHead && (
