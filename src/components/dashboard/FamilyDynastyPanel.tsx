@@ -125,7 +125,7 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
   const [joinError, setJoinError] = useState('');
   const [joinSuccess, setJoinSuccess] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
-  const [joinPreview, setJoinPreview] = useState<{ inviteId: string; groupId: string; groupName: string; groupType: string; memberCount: number } | null>(null);
+  const [joinPreview, setJoinPreview] = useState<{ inviteId: string; groupId: string; groupName: string; groupType: string; memberCount: number; headAvatarUrl?: string } | null>(null);
   const [joinRelationship, setJoinRelationship] = useState('');
   const [requestMessage, setRequestMessage] = useState('');
   const [requestSent, setRequestSent] = useState(false);
@@ -381,12 +381,30 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       .rpc('get_group_preview_from_invite', { p_code: code })
       .maybeSingle();
 
+    // Fetch the group head's avatar to show on the preview card
+    let headAvatarUrl: string | undefined;
+    const { data: groupRow } = await supabase
+      .from('farming_groups')
+      .select('head_user_id, user_id')
+      .eq('id', invite.group_id)
+      .maybeSingle();
+    const headId = groupRow?.head_user_id || groupRow?.user_id;
+    if (headId) {
+      const { data: headProfile } = await supabase
+        .from('user_profiles')
+        .select('avatar_url')
+        .eq('id', headId)
+        .maybeSingle();
+      headAvatarUrl = headProfile?.avatar_url ?? undefined;
+    }
+
     setJoinPreview({
       inviteId: invite.id,
       groupId: invite.group_id,
       groupName: preview?.group_name || 'this family',
       groupType: preview?.group_type || 'family',
       memberCount: Number(preview?.member_count ?? 0),
+      headAvatarUrl,
     });
     setJoinLoading(false);
   };
@@ -800,8 +818,14 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                             <div className="space-y-3 p-3 bg-grove-50 border border-grove-200 rounded-xl">
                               {/* Group preview card */}
                               <div className="flex items-center gap-3 p-3 bg-white border border-grove-100 rounded-xl">
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center flex-shrink-0 text-2xl leading-none">
-                                  {GROUP_CATEGORIES.find(c => c.value === joinPreview.groupType)?.icon ?? (joinPreview.groupType === 'family' ? '🏠' : '👥')}
+                                <div className="w-12 h-12 rounded-full flex-shrink-0 overflow-hidden ring-2 ring-grove-200">
+                                  {joinPreview.headAvatarUrl ? (
+                                    <img src={joinPreview.headAvatarUrl} alt={joinPreview.groupName} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center text-2xl leading-none">
+                                      {GROUP_CATEGORIES.find(c => c.value === joinPreview.groupType)?.icon ?? (joinPreview.groupType === 'family' ? '🏠' : '👥')}
+                                    </div>
+                                  )}
                                 </div>
                                 <div className="min-w-0">
                                   <p className="text-sm font-bold text-gray-900 truncate">{joinPreview.groupName}</p>
