@@ -1080,18 +1080,30 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                           </div>
                         </div>
                         <div className="flex gap-1.5">
-                          <button
-                            onClick={() => handleRemind(member)}
-                            disabled={!member.linked_user_id || reminded}
-                            className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                              reminded ? 'bg-grove-100 text-grove-500 cursor-default'
-                                : !member.linked_user_id ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
-                                : 'bg-grove-50 text-grove-700 hover:bg-grove-100'
-                            }`}
-                          >
-                            <Bell className="w-3.5 h-3.5" />
-                            {reminded ? 'Sent!' : 'Remind'}
-                          </button>
+                          {memberPlants.length === 0 ? (
+                            // Member has no kit — prompt head to get one for them
+                            <button
+                              onClick={() => onNavigate('kit-purchase')}
+                              className="flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg bg-warmth-500 text-white hover:bg-warmth-600 text-xs font-semibold transition-colors"
+                            >
+                              <TreePine className="w-3.5 h-3.5" />
+                              Buy Kit
+                            </button>
+                          ) : (
+                            // Member has a kit — remind them to log
+                            <button
+                              onClick={() => handleRemind(member)}
+                              disabled={!member.linked_user_id || reminded}
+                              className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+                                reminded ? 'bg-grove-100 text-grove-500 cursor-default'
+                                  : !member.linked_user_id ? 'bg-gray-50 text-gray-300 cursor-not-allowed'
+                                  : 'bg-grove-50 text-grove-700 hover:bg-grove-100'
+                              }`}
+                            >
+                              <Bell className="w-3.5 h-3.5" />
+                              {reminded ? 'Sent!' : 'Remind'}
+                            </button>
+                          )}
                           {memberPlants.length > 0 && (
                             <button
                               onClick={() => {
