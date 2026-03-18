@@ -567,10 +567,12 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
                     </div>
                     <div>
                       <h3 className="text-base font-bold text-white">
-                        Your Kit Code is Ready!
+                        {(profile?.user_type === 'family' || isLinkedToFamilyGroup) ? 'New Kit Ready to Assign!' : 'Your Kit Code is Ready!'}
                       </h3>
                       <p className="text-amber-100 text-xs mt-0.5">
-                        Assigned from "{kit.programName}" -- activate to start farming
+                        {(profile?.user_type === 'family' || isLinkedToFamilyGroup)
+                          ? `From "${kit.programName}" — activate for yourself or assign to a family member`
+                          : `Assigned from "${kit.programName}" -- activate to start farming`}
                       </p>
                     </div>
                   </div>
@@ -598,13 +600,36 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
                     </div>
                   </div>
 
-                  <button
-                    onClick={() => onNavigate('activate', kit.code)}
-                    className="w-full flex items-center justify-center gap-2 bg-white text-warmth-700 py-3.5 rounded-xl font-bold hover:bg-warmth-50 transition-all shadow-md text-sm"
-                  >
-                    Activate This Kit Now
-                    <ArrowRight className="w-5 h-5" />
-                  </button>
+                  {(profile?.user_type === 'family' || isLinkedToFamilyGroup) ? (
+                    <div className="space-y-2">
+                      <p className="text-[10px] text-white/60 text-center mb-1">Who is this kit for?</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          onClick={() => onNavigate('activate', kit.code)}
+                          className="flex items-center justify-center gap-1.5 bg-white/20 hover:bg-white/30 text-white py-3 rounded-xl font-semibold text-sm transition-all border border-white/30"
+                        >
+                          <UsersRound className="w-4 h-4" />
+                          For Myself
+                        </button>
+                        <button
+                          onClick={() => onNavigate('activate', kit.code)}
+                          className="flex items-center justify-center gap-1.5 bg-white text-warmth-700 py-3 rounded-xl font-bold hover:bg-warmth-50 transition-all shadow-md text-sm"
+                        >
+                          <UsersIcon className="w-4 h-4" />
+                          Assign to Member
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-white/50 text-center">You'll verify kit contents, then choose the member</p>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => onNavigate('activate', kit.code)}
+                      className="w-full flex items-center justify-center gap-2 bg-white text-warmth-700 py-3.5 rounded-xl font-bold hover:bg-warmth-50 transition-all shadow-md text-sm"
+                    >
+                      Activate This Kit Now
+                      <ArrowRight className="w-5 h-5" />
+                    </button>
+                  )}
                 </div>
               </div>
             ))}
