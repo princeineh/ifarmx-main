@@ -6,7 +6,7 @@ import {
   Users, Plus, Trash2, Edit3, Check, X, Loader2, Leaf, Phone,
   ChevronRight, ChevronDown, ChevronUp, TreePine, UserPlus, BarChart3,
   Crown, Copy, RefreshCw, Send, MessageSquare, Bell, Link, AlertCircle,
-  CheckCircle2, XCircle, ClipboardCopy, UserCheck, Baby, Pencil
+  CheckCircle2, XCircle, ClipboardCopy, UserCheck, Baby, Pencil, Clock
 } from 'lucide-react';
 import type { Plant } from '../../types/database';
 import { createNotification } from '../../services/notifications';
@@ -50,6 +50,7 @@ interface JoinRequest {
   status: 'pending' | 'accepted' | 'rejected';
   created_at: string;
   requester_name?: string;
+  requester_avatar?: string;
 }
 
 interface ChatMessage {
@@ -169,6 +170,12 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
   const [assigningMonitorId, setAssigningMonitorId] = useState<string | null>(null);
   const [monitorSaving, setMonitorSaving] = useState(false);
 
+  // Group plants — loaded from the active group (all members' plants)
+  const [groupPlants, setGroupPlants] = useState<Plant[]>([]);
+
+  // Pending join requests that the current user submitted (before approval)
+  const [pendingRequests, setPendingRequests] = useState<{ group_id: string; group_name: string; created_at: string }[]>([]);
+
   // Pending kit codes (head only)
   interface PendingCode { id: string; code: string; programId: string | null; programName: string }
   const [pendingCodes, setPendingCodes] = useState<PendingCode[]>([]);
@@ -277,26 +284,38 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
         }
 
         if (requestData && requestData.length > 0) {
-          // Fetch requester display names
+          // Fetch requester display names + avatars
           const ids = requestData.map(r => r.requester_user_id);
           const { data: profiles } = await supabase
             .from('user_profiles')
-            .select('id, display_name')
+            .select('id, display_name, avatar_url')
             .in('id', ids);
           const nameMap: Record<string, string> = {};
-          (profiles || []).forEach(p => { nameMap[p.id] = p.display_name || 'Unknown'; });
-          setJoinRequests(requestData.map(r => ({ ...r, requester_name: nameMap[r.requester_user_id] || 'Unknown' })) as JoinRequest[]);
+          const avatarReqMap: Record<string, string> = {};
+          (profiles || []).forEach((p: any) => {
+            nameMap[p.id] = p.display_name || 'Unknown';
+            if (p.avatar_url) avatarReqMap[p.id] = p.avatar_url;
+          });
+          setJoinRequests(requestData.map(r => ({
+            ...r,
+            requester_name: nameMap[r.requester_user_id] || 'Unknown',
+            requester_avatar: avatarReqMap[r.requester_user_id],
+          })) as JoinRequest[]);
         } else {
           setJoinRequests([]);
         }
 
-        // Fetch care logs for all family plants this week
-        const { data: groupPlants } = await supabase
+        // Fetch all plants for this group (full rows — used for FarmStatsBoard and check-ins)
+        const { data: allGroupPlants } = await supabase
           .from('plants')
-          .select('id')
+          .select('*')
           .eq('farming_group_id', foundGroup.id);
-        if (groupPlants && groupPlants.length > 0) {
-          const plantIds = groupPlants.map((p: any) => p.id);
+        const loadedGroupPlants = (allGroupPlants || []) as Plant[];
+        setGroupPlants(loadedGroupPlants);
+
+        // Fetch care logs for all family plants this week
+        if (loadedGroupPlants.length > 0) {
+          const plantIds = loadedGroupPlants.map((p: Plant) => p.id);
           const weekStart = getWeekStartStr();
           const { data: logs } = await supabase
             .from('care_logs')
@@ -305,6 +324,22 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
             .gte('log_date', weekStart);
           setFamilyCareLogs((logs || []) as CareLog[]);
         }
+      }
+
+      // Check if current user has any pending join requests (for "Awaiting Approval" UI)
+      if (user) {
+        const { data: myPending } = await supabase
+          .from('family_join_requests')
+          .select('group_id, status, created_at, farming_groups(group_name)')
+          .eq('requester_user_id', user.id)
+          .eq('status', 'pending');
+        setPendingRequests(
+          (myPending || []).map((r: any) => ({
+            group_id: r.group_id,
+            group_name: r.farming_groups?.group_name || 'a family',
+            created_at: r.created_at,
+          }))
+        );
       }
 
       // Pending (unactivated) kit codes for the head — shown in Overview for inline activation
@@ -1006,11 +1041,23 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
 
   // ── Tabbed panel ──────────────────────────────────────────────────────────────
 
-  const totalPlants = plants.length;
+  const totalPlants = groupPlants.length;
   const pendingCount = joinRequests.length;
 
   return (
     <>
+      {/* Awaiting Approval UI if user has pending requests and is not in a group */}
+      {pendingRequests.length > 0 && !group && (
+        <div className="border border-warmth-200 bg-warmth-50 rounded-xl p-4 text-center mb-4">
+          <Clock className="w-6 h-6 text-warmth-500 mx-auto mb-2" />
+          <p className="text-sm font-semibold text-gray-800">Awaiting Approval</p>
+          {pendingRequests.map(r => (
+            <p key={r.group_id} className="text-xs text-gray-500 mt-1">
+              Your request to join <span className="font-semibold">{r.group_name}</span> is pending.<br />You'll be notified when the head approves.
+            </p>
+          ))}
+        </div>
+      )}
       <div className="bg-white rounded-2xl shadow-md overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-grove-700 to-grove-600 px-5 py-4">
@@ -1145,7 +1192,7 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
               {/* FIFA-style family stats board */}
               {members.length > 0 && (() => {
                 const farmerList: Farmer[] = members.map(member => {
-                  const memberPlants = plants.filter(p => p.group_member_id === member.id);
+                  const memberPlants = groupPlants.filter(p => p.group_member_id === member.id);
                   const memberPlantIds = new Set(memberPlants.map(p => p.id));
                   const memberLogs = familyCareLogs.filter(l => memberPlantIds.has(l.plant_id));
                   return buildFarmer(member.name, memberPlants, memberLogs, {
@@ -1156,7 +1203,7 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                 });
 
                 // Merge head's unassigned plants into their row
-                const unassigned = plants.filter(p => !p.group_member_id);
+                const unassigned = groupPlants.filter(p => !p.group_member_id);
                 if (unassigned.length > 0) {
                   const unassignedIds = new Set(unassigned.map(p => p.id));
                   const headLogs = familyCareLogs.filter(l => unassignedIds.has(l.plant_id));
@@ -1194,14 +1241,14 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                 const topFarmer = (() => {
                   let best: { name: string; count: number } | null = null;
                   members.forEach(m => {
-                    const mp = plants.filter(p => p.group_member_id === m.id);
+                    const mp = groupPlants.filter(p => p.group_member_id === m.id);
                     const mpIds = new Set(mp.map(p => p.id));
                     const count = familyCareLogs.filter(l => mpIds.has(l.plant_id)).length;
                     if (!best || count > best.count) best = { name: m.name, count };
                   });
                   return best;
                 })();
-                const totalPlants = members.reduce((acc, m) => acc + plants.filter(p => p.group_member_id === m.id).length, 0);
+                const totalPlants = members.reduce((acc, m) => acc + groupPlants.filter(p => p.group_member_id === m.id).length, 0);
                 return (
                   <div className="bg-gradient-to-br from-grove-50 to-warmth-50 border border-grove-100 rounded-xl p-3.5">
                     <div className="flex items-center gap-2 mb-2.5">
@@ -1251,7 +1298,7 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                     </div>
                     <div className="space-y-2">
                       {dependentsToCheck.map(dep => {
-                        const depPlants = plants.filter(p => p.group_member_id === dep.id);
+                        const depPlants = groupPlants.filter(p => p.group_member_id === dep.id);
                         return (
                           <div key={dep.id} className="flex items-center justify-between gap-2 bg-white/70 rounded-lg px-3 py-2">
                             <div className="flex items-center gap-2 min-w-0">
