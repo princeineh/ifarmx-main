@@ -17,12 +17,16 @@ Deno.serve(async (req: Request) => {
     }
 
     const userId = record.id;
+    const meta = record.raw_user_meta_data || {};
 
     const { error: profileError } = await supabase
       .from('user_profiles')
       .insert({
         id: userId,
-        user_type: 'individual',
+        user_type: meta.user_type || 'individual',
+        display_name: meta.display_name || null,
+        favorite_dish: meta.favorite_dish || null,
+        region_vibe: meta.region_vibe || null,
       })
       .select()
       .single();

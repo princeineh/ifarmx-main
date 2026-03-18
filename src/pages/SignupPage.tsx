@@ -68,23 +68,19 @@ export function SignupPage({ onNavigate }: SignupPageProps) {
       const { data: authData, error: signUpError } = await supabase.auth.signUp({
         email: formData.email,
         password: formData.password,
+        options: {
+          data: {
+            display_name: formData.displayName || null,
+            user_type: formData.userType,
+            favorite_dish: formData.favoriteDish || null,
+            region_vibe: formData.regionVibe || null,
+          }
+        }
       });
 
       if (signUpError) throw signUpError;
 
       if (authData.user) {
-        const { error: profileError } = await supabase
-          .from('user_profiles')
-          .insert({
-            id: authData.user.id,
-            user_type: formData.userType,
-            favorite_dish: formData.favoriteDish || null,
-            region_vibe: formData.regionVibe || null,
-            display_name: formData.displayName || null,
-          });
-
-        if (profileError) throw profileError;
-
         createNotification(
           authData.user.id,
           'welcome',

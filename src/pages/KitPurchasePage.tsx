@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import {
   ArrowLeft, ShoppingBag, Check, CreditCard, MapPin,
-  Phone, FileText, Shield, Truck, FolderOpen, Clock, UsersRound
+  Phone, FileText, Shield, Truck, FolderOpen, Clock, UsersRound, Image
 } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../contexts/AuthContext';
@@ -13,7 +13,15 @@ interface KitPurchasePageProps {
   onNavigate: (page: string, data?: any) => void;
 }
 
-const KIT_PRICE = 24999;
+// Remove KIT_PRICE, plans, etc. for product listing
+interface KitProduct {
+  id: string;
+  name: string;
+  price: number;
+  description: string;
+  image_url: string;
+  created_at: string;
+}
 
 const INDIVIDUAL_PLANS = [
   { name: 'Solo Farmer', kits: 1, discount: 0, popular: false },
@@ -81,8 +89,6 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
   const isOrg = profile?.user_type === 'organization';
 
   const [step, setStep] = useState<Step>('details');
-  const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
-  const [quantity, setQuantity] = useState(isOrg ? 10 : 1);
   const [address, setAddress] = useState('');
   const [state, setState] = useState('');
   const [phone, setPhone] = useState('');
@@ -91,9 +97,23 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
   const [error, setError] = useState<string | null>(null);
   const [createdOrder, setCreatedOrder] = useState<any>(null);
 
+  const [products, setProducts] = useState<KitProduct[]>([]);
+  const [selectedProductId, setSelectedProductId] = useState<string>('');
+  const [quantity, setQuantity] = useState(1);
   const [programs, setPrograms] = useState<Program[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useState<string>('');
   const [loadingPrograms, setLoadingPrograms] = useState(isOrg);
+  useEffect(() => {
+    loadProducts();
+  }, []);
+
+  const loadProducts = async () => {
+    const { data, error } = await supabase.from('kit_products').select('*').order('created_at', { ascending: false });
+    if (!error && data) {
+      setProducts(data);
+      if (data.length > 0) setSelectedProductId(data[0].id);
+    }
+  };
 
   useEffect(() => {
     if (isOrg && user) loadOrgPrograms();
@@ -124,7 +144,8 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
   const allFamilyPlans = [...INDIVIDUAL_PLANS, ...FAMILY_PLANS];
   const matchedPlan = !isOrg ? allFamilyPlans.find(p => p.kits === quantity) : ORG_PLANS.find(p => p.kits === quantity);
   const appliedDiscount = matchedPlan ? matchedPlan.discount : getDiscountForQuantity(quantity, isOrg);
-  const totalPrice = calculatePrice(quantity, appliedDiscount);
+  const selectedProduct = products.find(p => p.id === selectedProductId);
+  const totalPrice = selectedProduct ? selectedProduct.price * quantity : 0;
   const selectedProgram = programs.find(p => p.id === selectedProgramId);
 
   const generateOrderNumber = () => {
@@ -156,9 +177,10 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
         .insert({
           user_id: user.id,
           order_number: orderNumber,
-          kit_type: 'standard',
+          kit_type: selectedProduct?.name || 'standard',
+          product_id: selectedProductId,
           quantity,
-          unit_price: KIT_PRICE,
+          unit_price: selectedProduct?.price || 0,
           total_price: totalPrice,
           payment_status: 'pending',
           delivery_status: 'processing',
@@ -458,44 +480,23 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
         )}
 
         <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
-          <div className="flex items-start gap-4 mb-6">
-            <img
-              src="/make_this_background_same_as_the_website_(1).jpeg"
-              alt="iFarmX Kit"
-              className="w-28 h-28 rounded-xl object-cover shadow-sm flex-shrink-0"
-            />
-            <div className="flex-1 min-w-0">
-              <h2 className="text-lg font-bold text-gray-900 mb-1">Oil Palm Revolution Starter Kit</h2>
-              <p className="text-sm text-gray-600 mb-3">
-                {isOrg
-                  ? 'Purchase kits in bulk for your program participants. Codes are automatically linked to the selected program.'
-                  : 'Everything you need to start your palm oil farming journey. Includes a unique activation code generated after purchase.'}
-              </p>
-              <div className="text-2xl font-bold text-emerald-600">N{KIT_PRICE.toLocaleString()}<span className="text-sm text-gray-500 font-normal"> / kit</span></div>
-            </div>
-          </div>
-
-          <div className="border-t border-gray-100 pt-4">
-            <h3 className="text-sm font-semibold text-gray-900 mb-3">Kit Contents</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {kitItems.map((item) => (
-                <div key={item} className="flex items-center gap-2 text-sm">
-                  <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
-                  <span className="text-gray-700">{item}</span>
+          <h2 className="text-lg font-bold text-gray-900 mb-4">Kit Store Products</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+            {products.map(p => (
+              <button
+                key={p.id}
+                onClick={() => { setSelectedProductId(p.id); setQuantity(1); }}
+                className={`border rounded-xl p-4 flex gap-4 items-center transition-all ${selectedProductId === p.id ? 'border-emerald-500 bg-emerald-50 shadow-md' : 'border-gray-200 hover:border-emerald-300 hover:shadow-sm'}`}
+              >
+                <img src={p.image_url} alt={p.name} className="w-20 h-20 object-cover rounded" />
+                <div className="flex-1 text-left">
+                  <div className="font-bold text-gray-900 text-lg mb-1">{p.name}</div>
+                  <div className="text-emerald-700 text-xl font-bold mb-1">N{p.price.toLocaleString()} <span className="text-sm text-gray-500 font-normal">/ kit</span></div>
+                  <div className="text-xs text-gray-500">{p.description}</div>
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="border-t border-gray-100 mt-4 pt-4 flex items-center gap-6 text-xs text-gray-500">
-            <div className="flex items-center gap-1.5">
-              <Truck className="w-4 h-4" />
-              <span>Free delivery nationwide</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Shield className="w-4 h-4" />
-              <span>Activation code included</span>
-            </div>
+                {selectedProductId === p.id && <Check className="w-6 h-6 text-emerald-500" />}
+              </button>
+            ))}
           </div>
         </div>
 

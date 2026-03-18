@@ -75,6 +75,15 @@ function formatTime(iso: string) {
   return date.toLocaleTimeString('en-NG', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
 
+function getOnlineStatus(lastSeenAt: string | undefined): 'online' | 'recently' | 'offline' {
+  if (!lastSeenAt) return 'offline';
+  const diffMs = Date.now() - new Date(lastSeenAt).getTime();
+  const diffMin = diffMs / 60000;
+  if (diffMin < 5) return 'online';
+  if (diffMin < 30) return 'recently';
+  return 'offline';
+}
+
 function generateCode() {
   const digits = Math.floor(1000 + Math.random() * 9000);
   return `PALM${digits}`;
@@ -115,7 +124,7 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
   const [joinError, setJoinError] = useState('');
   const [joinSuccess, setJoinSuccess] = useState('');
   const [joinLoading, setJoinLoading] = useState(false);
-  const [joinPreview, setJoinPreview] = useState<{ inviteId: string; groupId: string; groupName: string } | null>(null);
+  const [joinPreview, setJoinPreview] = useState<{ inviteId: string; groupId: string; groupName: string; groupType: string; memberCount: number } | null>(null);
   const [joinRelationship, setJoinRelationship] = useState('');
   const [requestMessage, setRequestMessage] = useState('');
   const [requestSent, setRequestSent] = useState(false);
@@ -149,9 +158,25 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
   const [familyCareLogs, setFamilyCareLogs] = useState<CareLog[]>([]);
   const chatEndRef = useRef<HTMLDivElement>(null);
 
+  // Presence — map of linked_user_id → last_seen_at
+  const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
+
   const isHead = !!(group && user && (group.head_user_id === user.id || group.user_id === user.id));
   const myMemberEntry = members.find(m => m.linked_user_id === user?.id);
   const canChat = isHead || !!myMemberEntry?.linked_user_id;
+
+  // Ping last_seen_at on mount + every 2 minutes
+  useEffect(() => {
+    if (!user) return;
+    const ping = () =>
+      supabase
+        .from('user_profiles')
+        .update({ last_seen_at: new Date().toISOString() })
+        .eq('id', user.id);
+    ping();
+    const timer = setInterval(ping, 2 * 60 * 1000);
+    return () => clearInterval(timer);
+  }, [user]);
 
   useEffect(() => {
     if (user) loadData();
@@ -215,6 +240,20 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
         ]);
 
         setMembers((memberData || []) as MemberData[]);
+
+        // Fetch presence (last_seen_at) for all linked members
+        const linkedIds = (memberData || [])
+          .map((m: any) => m.linked_user_id)
+          .filter(Boolean);
+        if (linkedIds.length > 0) {
+          const { data: presenceData } = await supabase
+            .from('user_profiles')
+            .select('id, last_seen_at')
+            .in('id', linkedIds);
+          const pm: Record<string, string> = {};
+          (presenceData || []).forEach((p: any) => { if (p.last_seen_at) pm[p.id] = p.last_seen_at; });
+          setPresenceMap(pm);
+        }
 
         if (requestData && requestData.length > 0) {
           // Fetch requester display names
@@ -327,16 +366,16 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       return;
     }
 
-    const { data: grp } = await supabase
-      .from('farming_groups')
-      .select('group_name')
-      .eq('id', invite.group_id)
+    const { data: preview } = await supabase
+      .rpc('get_group_preview_from_invite', { p_code: code })
       .maybeSingle();
 
     setJoinPreview({
       inviteId: invite.id,
       groupId: invite.group_id,
-      groupName: grp?.group_name || 'this family',
+      groupName: preview?.group_name || 'this family',
+      groupType: preview?.group_type || 'family',
+      memberCount: Number(preview?.member_count ?? 0),
     });
     setJoinLoading(false);
   };
@@ -729,9 +768,18 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                           <p className="text-xs font-semibold text-gray-700 mb-2">Option A — Enter invite code</p>
                           {joinPreview ? (
                             <div className="space-y-3 p-3 bg-grove-50 border border-grove-200 rounded-xl">
-                              <div>
-                                <p className="text-xs text-gray-500">You're joining</p>
-                                <p className="text-sm font-bold text-grove-800">{joinPreview.groupName}</p>
+                              {/* Group preview card */}
+                              <div className="flex items-center gap-3 p-3 bg-white border border-grove-100 rounded-xl">
+                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center flex-shrink-0 text-2xl leading-none">
+                                  {GROUP_CATEGORIES.find(c => c.value === joinPreview.groupType)?.icon ?? (joinPreview.groupType === 'family' ? '🏠' : '👥')}
+                                </div>
+                                <div className="min-w-0">
+                                  <p className="text-sm font-bold text-gray-900 truncate">{joinPreview.groupName}</p>
+                                  <p className="text-xs text-gray-400 capitalize">{joinPreview.groupType}</p>
+                                  <p className="text-xs text-grove-600 font-medium mt-0.5">
+                                    {joinPreview.memberCount} member{joinPreview.memberCount !== 1 ? 's' : ''} currently in this group
+                                  </p>
+                                </div>
                               </div>
                               <input
                                 type="text"
@@ -1098,8 +1146,18 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                 {members.map(member => (
                   <div key={member.id}>
                     <div className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-gray-50 transition-colors">
-                      <div className="w-8 h-8 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center flex-shrink-0">
-                        <span className="text-xs font-bold text-white">{getInitials(member.name)}</span>
+                      <div className="relative flex-shrink-0">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center">
+                          <span className="text-xs font-bold text-white">{getInitials(member.name)}</span>
+                        </div>
+                        {member.linked_user_id && (() => {
+                          const status = getOnlineStatus(presenceMap[member.linked_user_id]);
+                          return (
+                            <span className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white ${
+                              status === 'online' ? 'bg-green-400' : status === 'recently' ? 'bg-yellow-400' : 'bg-gray-300'
+                            }`} title={status === 'online' ? 'Online now' : status === 'recently' ? 'Active recently' : 'Offline'} />
+                          );
+                        })()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-1.5">
