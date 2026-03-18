@@ -117,6 +117,7 @@ export interface Farmer {
   name: string;
   isHead?: boolean;
   isCustodianChild?: boolean;
+  avatarUrl?: string;
   seedCount: number;
   plantCount: number;
   healthScore: number;
@@ -135,7 +136,7 @@ export function buildFarmer(
   name: string,
   plants: Plant[],
   logs: CareLog[],
-  opts?: { isHead?: boolean; isCustodianChild?: boolean }
+  opts?: { isHead?: boolean; isCustodianChild?: boolean; avatarUrl?: string }
 ): Farmer {
   const stats = getCareStats(logs);
   const ws = getWeekStartStr();
@@ -144,6 +145,7 @@ export function buildFarmer(
     name,
     isHead: opts?.isHead,
     isCustodianChild: opts?.isCustodianChild,
+    avatarUrl: opts?.avatarUrl,
     seedCount: plants.length * SEEDS_PER_KIT,
     plantCount: plants.length,
     healthScore: getHealthScore(logs),
@@ -313,9 +315,17 @@ export function FarmStatsBoard({
             return (
               <div key={farmer.name + idx} className="flex flex-col items-center">
                 <div className="relative mb-1.5">
-                  <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center shadow-lg shadow-grove-900/30 ring-2 ring-white/20`}>
-                    <span className="text-lg sm:text-xl font-black text-white">{getInitials(farmer.name)}</span>
-                  </div>
+                  {farmer.avatarUrl ? (
+                    <img
+                      src={farmer.avatarUrl}
+                      alt={farmer.name}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-full object-cover shadow-lg shadow-grove-900/30 ring-2 ring-white/20"
+                    />
+                  ) : (
+                    <div className={`w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-gradient-to-br ${grad} flex items-center justify-center shadow-lg shadow-grove-900/30 ring-2 ring-white/20`}>
+                      <span className="text-lg sm:text-xl font-black text-white">{getInitials(farmer.name)}</span>
+                    </div>
+                  )}
                   {idx === 0 && !isSolo && sorted.length > 1 && (
                     <div className="absolute -top-1.5 -right-1.5 w-6 h-6 bg-warmth-400 rounded-full flex items-center justify-center shadow-md">
                       <Crown className="w-3.5 h-3.5 text-white" />

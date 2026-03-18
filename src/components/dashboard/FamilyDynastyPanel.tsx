@@ -37,6 +37,7 @@ interface MemberData {
   phone: string | null;
   linked_user_id: string | null;
   is_custodian_child: boolean;
+  monitor_member_id: string | null;
 }
 
 interface JoinRequest {
@@ -160,6 +161,11 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
 
   // Presence — map of linked_user_id → last_seen_at
   const [presenceMap, setPresenceMap] = useState<Record<string, string>>({});
+  // Avatar — map of linked_user_id → avatar_url
+  const [avatarMap, setAvatarMap] = useState<Record<string, string>>({});
+  // Monitor assignment UI
+  const [assigningMonitorId, setAssigningMonitorId] = useState<string | null>(null);
+  const [monitorSaving, setMonitorSaving] = useState(false);
 
   const isHead = !!(group && user && (group.head_user_id === user.id || group.user_id === user.id));
   const myMemberEntry = members.find(m => m.linked_user_id === user?.id);
@@ -241,18 +247,23 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
 
         setMembers((memberData || []) as MemberData[]);
 
-        // Fetch presence (last_seen_at) for all linked members
+        // Fetch presence (last_seen_at) + avatar_url for all linked members
         const linkedIds = (memberData || [])
           .map((m: any) => m.linked_user_id)
           .filter(Boolean);
         if (linkedIds.length > 0) {
           const { data: presenceData } = await supabase
             .from('user_profiles')
-            .select('id, last_seen_at')
+            .select('id, last_seen_at, avatar_url')
             .in('id', linkedIds);
           const pm: Record<string, string> = {};
-          (presenceData || []).forEach((p: any) => { if (p.last_seen_at) pm[p.id] = p.last_seen_at; });
+          const am: Record<string, string> = {};
+          (presenceData || []).forEach((p: any) => {
+            if (p.last_seen_at) pm[p.id] = p.last_seen_at;
+            if (p.avatar_url) am[p.id] = p.avatar_url;
+          });
           setPresenceMap(pm);
+          setAvatarMap(am);
         }
 
         if (requestData && requestData.length > 0) {
@@ -463,6 +474,30 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
     }
     setEditingRelationshipId(null);
     setSavingRelationship(false);
+    await loadData();
+  };
+
+  // ── Assign monitor ──────────────────────────────────────────────────────────
+
+  const handleAssignMonitor = async (dependentId: string, monitorMemberId: string | null) => {
+    setMonitorSaving(true);
+    await supabase
+      .from('group_members')
+      .update({ monitor_member_id: monitorMemberId })
+      .eq('id', dependentId);
+
+    const dependent = members.find(m => m.id === dependentId);
+    const monitor = members.find(m => m.id === monitorMemberId);
+    if (monitor?.linked_user_id && dependent) {
+      createNotification(
+        monitor.linked_user_id,
+        'system',
+        'You\'re now a monitor 👁️',
+        `${displayName} assigned you to follow up on ${dependent.name}'s daily plant care.`
+      );
+    }
+    setAssigningMonitorId(null);
+    setMonitorSaving(false);
     await loadData();
   };
 
@@ -1021,6 +1056,7 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                   return buildFarmer(member.name, memberPlants, memberLogs, {
                     isHead: member.linked_user_id === (group?.head_user_id || group?.user_id),
                     isCustodianChild: member.is_custodian_child,
+                    avatarUrl: member.linked_user_id ? avatarMap[member.linked_user_id] : undefined,
                   });
                 });
 
@@ -1057,6 +1093,104 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                 </div>
               )}
 
+              {/* Weekly family summary */}
+              {members.length > 0 && (() => {
+                const totalActions = familyCareLogs.length;
+                const topFarmer = (() => {
+                  let best: { name: string; count: number } | null = null;
+                  members.forEach(m => {
+                    const mp = plants.filter(p => p.group_member_id === m.id);
+                    const mpIds = new Set(mp.map(p => p.id));
+                    const count = familyCareLogs.filter(l => mpIds.has(l.plant_id)).length;
+                    if (!best || count > best.count) best = { name: m.name, count };
+                  });
+                  return best;
+                })();
+                const totalPlants = members.reduce((acc, m) => acc + plants.filter(p => p.group_member_id === m.id).length, 0);
+                return (
+                  <div className="bg-gradient-to-br from-grove-50 to-warmth-50 border border-grove-100 rounded-xl p-3.5">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <BarChart3 className="w-4 h-4 text-grove-600" />
+                      <p className="text-xs font-bold text-grove-800 uppercase tracking-wide">This Week's Family Report</p>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="bg-white/70 rounded-lg py-2 px-1">
+                        <p className="text-lg font-black text-grove-700">{totalActions}</p>
+                        <p className="text-[9px] text-gray-500 font-semibold uppercase">Care Actions</p>
+                      </div>
+                      <div className="bg-white/70 rounded-lg py-2 px-1">
+                        <p className="text-lg font-black text-warmth-600">{totalPlants}</p>
+                        <p className="text-[9px] text-gray-500 font-semibold uppercase">Plants Growing</p>
+                      </div>
+                      <div className="bg-white/70 rounded-lg py-2 px-1">
+                        <p className="text-lg font-black text-soul-600">{members.length}</p>
+                        <p className="text-[9px] text-gray-500 font-semibold uppercase">Members</p>
+                      </div>
+                    </div>
+                    {topFarmer && topFarmer.count > 0 && (
+                      <p className="text-[10px] text-grove-700 mt-2 text-center">
+                        🏆 <span className="font-semibold">{topFarmer.name}</span> leads this week with {topFarmer.count} care log{topFarmer.count !== 1 ? 's' : ''}
+                      </p>
+                    )}
+                    {totalActions === 0 && (
+                      <p className="text-[10px] text-gray-400 mt-2 text-center">No care logged this week — remind the family to tend their plants!</p>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Dependent check-in — shown to assigned monitor OR head for unmonitored dependents */}
+              {members.length > 0 && (() => {
+                const dependentsToCheck = members.filter(m => {
+                  if (!m.is_custodian_child) return false;
+                  if (isHead && !m.monitor_member_id) return true; // head covers unmonitored
+                  if (myMemberEntry && m.monitor_member_id === myMemberEntry.id) return true;
+                  return false;
+                });
+                if (dependentsToCheck.length === 0) return null;
+                return (
+                  <div className="border border-warmth-200 bg-warmth-50/50 rounded-xl p-3.5">
+                    <div className="flex items-center gap-2 mb-2.5">
+                      <UserCheck className="w-4 h-4 text-warmth-600" />
+                      <p className="text-xs font-bold text-warmth-800 uppercase tracking-wide">Today's Check-In</p>
+                    </div>
+                    <div className="space-y-2">
+                      {dependentsToCheck.map(dep => {
+                        const depPlants = plants.filter(p => p.group_member_id === dep.id);
+                        return (
+                          <div key={dep.id} className="flex items-center justify-between gap-2 bg-white/70 rounded-lg px-3 py-2">
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Baby className="w-4 h-4 text-warmth-400 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-gray-800 truncate">{dep.name}</p>
+                                <p className="text-[10px] text-gray-400">Has {dep.name.split(' ')[0]} cared for their plants today?</p>
+                              </div>
+                            </div>
+                            {depPlants.length > 0 ? (
+                              <button
+                                onClick={() => setCustodianModal({ member: dep, plant: depPlants[0] })}
+                                className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-warmth-500 text-white text-[10px] font-semibold hover:bg-warmth-600 transition-colors"
+                              >
+                                <TreePine className="w-3 h-3" />
+                                Log Care
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => onNavigate('kit-purchase')}
+                                className="flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-grove-500 text-white text-[10px] font-semibold hover:bg-grove-600 transition-colors"
+                              >
+                                <TreePine className="w-3 h-3" />
+                                Buy Kit
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Member quick-action cards (head only) */}
               {members.length > 0 && isHead && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1066,11 +1200,18 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                     return (
                       <div key={member.id} className="border border-gray-100 rounded-xl p-3 hover:border-grove-200 hover:bg-grove-50/30 transition-colors">
                         <div className="flex items-center gap-2.5 mb-2">
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center flex-shrink-0">
-                            <span className="text-[10px] font-bold text-white">{getInitials(member.name)}</span>
-                          </div>
+                          {member.linked_user_id && avatarMap[member.linked_user_id] ? (
+                            <img src={avatarMap[member.linked_user_id]} alt={member.name} className="w-8 h-8 rounded-full object-cover flex-shrink-0 ring-1 ring-grove-200" />
+                          ) : (
+                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center flex-shrink-0">
+                              <span className="text-[10px] font-bold text-white">{getInitials(member.name)}</span>
+                            </div>
+                          )}
                           <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-gray-900 truncate">{member.name}</p>
+                            <div className="flex items-center gap-1">
+                              <p className="text-sm font-semibold text-gray-900 truncate">{member.name}</p>
+                              {member.is_custodian_child && <Baby className="w-3 h-3 text-warmth-400 flex-shrink-0" />}
+                            </div>
                             <span className="text-[10px] text-gray-400">{memberPlants.length} kit{memberPlants.length !== 1 ? 's' : ''} &middot; {memberPlants.length * 3} seeds</span>
                           </div>
                         </div>
@@ -1154,9 +1295,13 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                   <div key={member.id}>
                     <div className="flex items-center gap-2.5 p-2.5 rounded-xl hover:bg-gray-50 transition-colors">
                       <div className="relative flex-shrink-0">
-                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center">
-                          <span className="text-xs font-bold text-white">{getInitials(member.name)}</span>
-                        </div>
+                        {member.linked_user_id && avatarMap[member.linked_user_id] ? (
+                          <img src={avatarMap[member.linked_user_id]} alt={member.name} className="w-8 h-8 rounded-full object-cover ring-1 ring-grove-200" />
+                        ) : (
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center">
+                            <span className="text-xs font-bold text-white">{getInitials(member.name)}</span>
+                          </div>
+                        )}
                         {member.linked_user_id && (() => {
                           const status = getOnlineStatus(presenceMap[member.linked_user_id]);
                           return (
@@ -1215,10 +1360,28 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                           }`}>
                             {member.linked_user_id ? '✓ Linked' : 'Local only'}
                           </span>
+                          {member.is_custodian_child && (() => {
+                            const monitor = members.find(m => m.id === member.monitor_member_id);
+                            return (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-full font-medium bg-warmth-100 text-warmth-700">
+                                👁️ {monitor ? monitor.name.split(' ')[0] : 'Head monitors'}
+                              </span>
+                            );
+                          })()}
                         </div>
                       </div>
 
                       <div className="flex items-center gap-1.5">
+                        {/* Assign monitor — head only, for custodian children */}
+                        {isHead && member.is_custodian_child && (
+                          <button
+                            onClick={() => setAssigningMonitorId(id => id === member.id ? null : member.id)}
+                            title="Assign a monitor"
+                            className="p-1.5 rounded-lg text-warmth-500 hover:bg-warmth-50 transition-colors"
+                          >
+                            <UserCheck className="w-4 h-4" />
+                          </button>
+                        )}
                         {/* Crown button — head only, on linked non-head members */}
                         {isHead && member.linked_user_id && member.linked_user_id !== (group.head_user_id || group.user_id) && (
                           <button
@@ -1264,6 +1427,44 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                             </button>
                             <button
                               onClick={() => setCrownTarget(null)}
+                              className="px-3 py-1.5 rounded-lg text-gray-500 text-xs font-medium hover:bg-gray-100 transition-colors"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+
+                    {/* Monitor assignment — head only, for custodian children */}
+                    <AnimatePresence>
+                      {isHead && member.is_custodian_child && assigningMonitorId === member.id && (
+                        <motion.div
+                          className="mx-2 mb-2 p-3 border border-warmth-200 rounded-xl bg-warmth-50/60"
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          transition={{ duration: 0.15 }}
+                        >
+                          <p className="text-xs text-gray-700 mb-2">
+                            Who will follow up on <span className="font-semibold">{member.name}</span>'s daily care?
+                          </p>
+                          <div className="flex gap-2 flex-wrap">
+                            <select
+                              className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 focus:ring-1 focus:ring-warmth-400 focus:border-transparent bg-white"
+                              defaultValue={member.monitor_member_id || ''}
+                              onChange={async e => {
+                                await handleAssignMonitor(member.id, e.target.value || null);
+                              }}
+                              disabled={monitorSaving}
+                            >
+                              <option value="">Head monitors (default)</option>
+                              {members.filter(m => !m.is_custodian_child && m.id !== member.id).map(m => (
+                                <option key={m.id} value={m.id}>{m.name}</option>
+                              ))}
+                            </select>
+                            <button
+                              onClick={() => setAssigningMonitorId(null)}
                               className="px-3 py-1.5 rounded-lg text-gray-500 text-xs font-medium hover:bg-gray-100 transition-colors"
                             >
                               Cancel
