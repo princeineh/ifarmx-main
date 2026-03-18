@@ -18,6 +18,7 @@ import type { CareLog } from '../../types/database';
 interface FamilyDynastyPanelProps {
   plants: Plant[];
   onNavigate: (page: string, data?: any) => void;
+  onGroupFound?: (hasGroup: boolean) => void;
 }
 
 interface GroupData {
@@ -45,6 +46,7 @@ interface JoinRequest {
   group_id: string;
   requester_user_id: string;
   message: string | null;
+  invite_id: string | null;
   status: 'pending' | 'accepted' | 'rejected';
   created_at: string;
   requester_name?: string;
@@ -100,7 +102,7 @@ const GROUP_CATEGORIES = [
   { value: 'other',        label: 'Other',              desc: 'Something else',             icon: '🌟', type: 'group'  as const },
 ] as const;
 
-export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelProps) {
+export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyDynastyPanelProps) {
   const { user, profile, refreshProfile } = useAuth();
   const displayName = profile?.display_name || 'there';
 
@@ -220,6 +222,7 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       }
 
       setAllGroups(foundGroups);
+      onGroupFound?.(foundGroups.length > 0);
 
       // Resolve which group to display
       const resolvedId = targetGroupId
@@ -409,29 +412,24 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
     setJoinLoading(false);
   };
 
-  // ── Join via invite code — Step 2: confirm join ───────────────────────────────
+  // ── Join via invite code — Step 2: request approval ─────────────────────────
 
   const handleConfirmJoin = async () => {
     if (!user || !joinPreview) return;
     setJoinLoading(true);
 
-    await supabase
-      .from('family_invites')
-      .update({ used_by_user_id: user.id, used_at: new Date().toISOString() })
-      .eq('id', joinPreview.inviteId);
-
     const joinerName = profile?.display_name || user.email || 'Family Member';
 
-    await supabase.from('group_members').insert({
+    // Create a pending join request — head must approve before member is added
+    await supabase.from('family_join_requests').insert({
       group_id: joinPreview.groupId,
-      name: joinerName,
-      relationship: joinRelationship.trim() || null,
-      seeds_allocated: 0,
-      phone: profile?.phone_number || null,
-      linked_user_id: user.id,
-      is_custodian_child: false,
+      requester_user_id: user.id,
+      message: joinRelationship.trim() || null,
+      invite_id: joinPreview.inviteId,
+      status: 'pending',
     });
 
+    // Notify the head
     const { data: grpData } = await supabase
       .from('farming_groups')
       .select('head_user_id')
@@ -442,33 +440,14 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       createNotification(
         grpData.head_user_id,
         'system',
-        'New Family Member 🌱',
-        `${joinerName} has joined ${joinPreview.groupName}${joinRelationship.trim() ? ' as ' + joinRelationship.trim() : ''}. Go to Members to assign kits.`
+        'Join Request 🔔',
+        `${joinerName} wants to join ${joinPreview.groupName}${joinRelationship.trim() ? ' as ' + joinRelationship.trim() : ''}. Open the Members tab to approve.`
       );
     }
 
-    const { data: linkedMembers } = await supabase
-      .from('group_members')
-      .select('linked_user_id')
-      .eq('group_id', joinPreview.groupId)
-      .not('linked_user_id', 'is', null);
-
-    for (const m of (linkedMembers || [])) {
-      if (m.linked_user_id !== user.id) {
-        createNotification(
-          m.linked_user_id,
-          'system',
-          'Family Update 🏡',
-          `${joinerName} just joined the family!`
-        );
-      }
-    }
-
-    await refreshProfile();
-    setJoinSuccess(`You've joined ${joinPreview.groupName}! Welcome home 🌱`);
+    setJoinSuccess(`Request sent to ${joinPreview.groupName}! You'll be notified once the head approves.`);
     setJoinPreview(null);
     setJoinRelationship('');
-    await loadData();
     setJoinLoading(false);
   };
 
@@ -543,7 +522,15 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
       .update({ status: 'accepted', updated_at: new Date().toISOString() })
       .eq('id', req.id);
 
-    // Check if member row already exists (e.g., from a previous rejected request)
+    // If they joined via invite code, mark it as used now
+    if (req.invite_id) {
+      await supabase
+        .from('family_invites')
+        .update({ used_by_user_id: req.requester_user_id, used_at: new Date().toISOString() })
+        .eq('id', req.invite_id);
+    }
+
+    // Check if member row already exists
     const { data: existing } = await supabase
       .from('group_members')
       .select('id')
@@ -556,10 +543,19 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
         group_id: group.id,
         name: req.requester_name || 'Family Member',
         linked_user_id: req.requester_user_id,
+        relationship: req.message || null,
         seeds_allocated: 0,
         is_custodian_child: false,
       });
     }
+
+    // Notify the joiner they were approved
+    createNotification(
+      req.requester_user_id,
+      'system',
+      'Join Approved! 🌱',
+      `You've been approved to join ${group.group_name}. Open your dashboard to see the Family panel.`
+    );
 
     setJoinRequests(prev => prev.filter(r => r.id !== req.id));
     await loadData();
@@ -848,7 +844,7 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                                   disabled={joinLoading}
                                   className="flex-1 flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg bg-grove-600 text-white text-sm font-semibold hover:bg-grove-700 disabled:opacity-50 transition-colors"
                                 >
-                                  {joinLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm & Join'}
+                                  {joinLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Request to Join'}
                                 </button>
                                 <button
                                   onClick={() => { setJoinPreview(null); setJoinRelationship(''); setJoinError(''); }}
@@ -1525,8 +1521,13 @@ export function FamilyDynastyPanel({ plants, onNavigate }: FamilyDynastyPanelPro
                           <div key={req.id} className="px-4 py-3 bg-white">
                             <div className="flex items-start justify-between gap-2 mb-2">
                               <div>
-                                <p className="text-sm font-semibold text-gray-900">{req.requester_name}</p>
-                                {req.message && <p className="text-xs text-gray-500 mt-0.5">"{req.message}"</p>}
+                                <div className="flex items-center gap-1.5">
+                                  <p className="text-sm font-semibold text-gray-900">{req.requester_name}</p>
+                                  {req.invite_id && (
+                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-grove-100 text-grove-700 font-semibold">via invite</span>
+                                  )}
+                                </div>
+                                {req.message && <p className="text-xs text-gray-500 mt-0.5">Role: {req.message}</p>}
                                 <p className="text-[10px] text-gray-400 mt-1">
                                   {new Date(req.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
                                 </p>

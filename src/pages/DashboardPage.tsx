@@ -622,11 +622,14 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
           />
         </div>
 
-        {(profile?.user_type === 'family' || isLinkedToFamilyGroup) && (
-          <div data-tour="family-panel">
-            <FamilyDynastyPanel plants={plants} onNavigate={onNavigate} />
-          </div>
-        )}
+        {/* Always mount so onGroupFound can fire; renders nothing until groups are found */}
+        <div data-tour="family-panel" className={profile?.user_type === 'family' || isLinkedToFamilyGroup ? '' : 'hidden'}>
+          <FamilyDynastyPanel
+            plants={plants}
+            onNavigate={onNavigate}
+            onGroupFound={(hasGroup) => { if (hasGroup) setIsLinkedToFamilyGroup(true); }}
+          />
+        </div>
 
         {user && profile?.user_type !== 'organization' && (
           <OpenProgramsBanner userId={user.id} onNavigate={onNavigate} />
