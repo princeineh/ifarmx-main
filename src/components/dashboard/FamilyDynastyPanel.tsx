@@ -236,7 +236,6 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
       }
 
       setAllGroups(foundGroups);
-      onGroupFound?.(foundGroups.length > 0);
 
       // Resolve which group to display
       const resolvedId = targetGroupId
@@ -327,8 +326,10 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
       }
 
       // Check if current user has pending join requests (SECURITY DEFINER bypasses RLS)
+      let pendingCount = 0;
       if (user) {
         const { data: myPending } = await supabase.rpc('get_user_pending_requests');
+        pendingCount = (myPending || []).length;
         setPendingRequests(
           (myPending || []).map((r: any) => ({
             group_id: r.group_id,
@@ -337,6 +338,9 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
           }))
         );
       }
+
+      // Show panel if user has groups OR pending join requests
+      onGroupFound?.(foundGroups.length > 0 || pendingCount > 0);
 
       // Pending (unactivated) kit codes for the head — shown in Overview for inline activation
       if (user) {
