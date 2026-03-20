@@ -483,38 +483,46 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
 
         <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
           <h2 className="text-lg font-bold text-gray-900 mb-4">Kit Store Products</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-            {products.map(p => (
-              <button
-                key={p.id}
-                onClick={() => { setSelectedProductId(p.id); setQuantity(1); }}
-                className={`border rounded-xl p-4 flex gap-4 items-center transition-all ${selectedProductId === p.id ? 'border-emerald-500 bg-emerald-50 shadow-md' : 'border-gray-200 hover:border-emerald-300 hover:shadow-sm'}`}
-              >
-                <img src={p.image_url} alt={p.name} className="w-20 h-20 object-cover rounded" />
-                <div className="flex-1 text-left">
-                  <div className="font-bold text-gray-900 text-lg mb-1">{p.name}</div>
-                  <div className="text-emerald-700 text-xl font-bold mb-1">N{p.price.toLocaleString()} <span className="text-sm text-gray-500 font-normal">/ kit</span></div>
-                  <div className="text-xs text-gray-500">{p.description}</div>
-                </div>
-                {selectedProductId === p.id && <Check className="w-6 h-6 text-emerald-500" />}
-              </button>
-            ))}
-          </div>
+          {products.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-10 text-center text-gray-500">
+              <Image className="w-10 h-10 mb-3 text-gray-300" />
+              <p className="text-sm font-medium text-gray-600">No products available yet</p>
+              <p className="text-xs text-gray-400 mt-1">Admin needs to add kit products in the Admin Dashboard → Kit Products tab.</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              {products.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => { setSelectedProductId(p.id); setQuantity(1); }}
+                  className={`border rounded-xl p-4 flex gap-4 items-center transition-all ${selectedProductId === p.id ? 'border-emerald-500 bg-emerald-50 shadow-md' : 'border-gray-200 hover:border-emerald-300 hover:shadow-sm'}`}
+                >
+                  <img src={p.image_url} alt={p.name} className="w-20 h-20 object-cover rounded" />
+                  <div className="flex-1 text-left">
+                    <div className="font-bold text-gray-900 text-lg mb-1">{p.name}</div>
+                    <div className="text-emerald-700 text-xl font-bold mb-1">N{p.price.toLocaleString()} <span className="text-sm text-gray-500 font-normal">/ kit</span></div>
+                    <div className="text-xs text-gray-500">{p.description}</div>
+                  </div>
+                  {selectedProductId === p.id && <Check className="w-6 h-6 text-emerald-500" />}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
-        {!isOrg && (
-          <div className="bg-gradient-to-r from-sky-50 to-blue-50 border-2 border-sky-200 rounded-2xl p-5 mb-6">
+        {!isOrg && appliedDiscount > 0 && (
+          <div className="bg-gradient-to-r from-sky-50 to-blue-50 border-2 border-sky-200 rounded-2xl p-5 mb-6 animate-pulse-once">
             <div className="flex items-start gap-3">
               <div className="w-10 h-10 bg-sky-500 rounded-full flex items-center justify-center flex-shrink-0">
                 <UsersRound className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h3 className="font-bold text-gray-900 mb-1">Family Discounts Available</h3>
+                <h3 className="font-bold text-gray-900 mb-1">Family Discount Unlocked! {appliedDiscount}% off</h3>
                 <p className="text-sm text-gray-700 mb-2">
-                  Farm together, save together. Get 5 or more kits and unlock family discounts up to 15% off.
+                  You're getting a family discount. Farm together, save together — up to 15% off with 12+ kits.
                 </p>
                 <div className="flex flex-wrap gap-2 text-xs">
-                  <span className="px-2 py-1 bg-white rounded-full text-gray-700 font-medium">Save up to 15%</span>
+                  <span className="px-2 py-1 bg-white rounded-full text-emerald-700 font-semibold">Saving {appliedDiscount}% now</span>
                   <span className="px-2 py-1 bg-white rounded-full text-gray-700 font-medium">Shared family dashboard</span>
                   <span className="px-2 py-1 bg-white rounded-full text-gray-700 font-medium">Assign kits to members</span>
                 </div>

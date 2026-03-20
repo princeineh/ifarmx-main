@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import {
-  Shield, LayoutDashboard, Users, FolderOpen, Package,
+  Shield, LayoutDashboard, Users, FolderOpen, Package, ShoppingBag,
   ArrowLeft, LogOut, FileText, BarChart3, Monitor, CalendarCheck
 } from 'lucide-react';
 import { AdminOverview } from '../components/admin/AdminOverview';
@@ -12,12 +12,13 @@ import { AdminInvoices } from '../components/admin/AdminInvoices';
 import { AdminAnalytics } from '../components/admin/AdminAnalytics';
 import { AdminMonitor } from '../components/admin/monitor/AdminMonitor';
 import { AdminReservations } from '../components/admin/AdminReservations';
+import { AdminKitProducts } from '../components/admin/AdminKitProducts';
 
 interface AdminDashboardPageProps {
   onNavigate: (page: string, data?: any) => void;
 }
 
-type AdminTab = 'overview' | 'reservations' | 'monitor' | 'analytics' | 'users' | 'programs' | 'orders' | 'invoices';
+type AdminTab = 'overview' | 'reservations' | 'monitor' | 'analytics' | 'users' | 'programs' | 'orders' | 'invoices' | 'kit-products';
 
 const tabs: { key: AdminTab; label: string; icon: typeof LayoutDashboard }[] = [
   { key: 'overview', label: 'Overview', icon: LayoutDashboard },
@@ -28,6 +29,7 @@ const tabs: { key: AdminTab; label: string; icon: typeof LayoutDashboard }[] = [
   { key: 'programs', label: 'Programs', icon: FolderOpen },
   { key: 'orders', label: 'Orders', icon: Package },
   { key: 'invoices', label: 'Invoices', icon: FileText },
+  { key: 'kit-products', label: 'Kit Products', icon: ShoppingBag },
 ];
 
 export function AdminDashboardPage({ onNavigate }: AdminDashboardPageProps) {
@@ -140,6 +142,7 @@ export function AdminDashboardPage({ onNavigate }: AdminDashboardPageProps) {
             {activeTab === 'programs' && 'Monitor all programs across organizations'}
             {activeTab === 'orders' && 'Track orders and update payment/delivery status'}
             {activeTab === 'invoices' && 'Manage program invoices and payment tracking'}
+            {activeTab === 'kit-products' && 'Add and manage kit products available in the store'}
           </p>
         </div>
 
@@ -151,6 +154,7 @@ export function AdminDashboardPage({ onNavigate }: AdminDashboardPageProps) {
         {activeTab === 'programs' && <AdminPrograms />}
         {activeTab === 'orders' && <AdminOrders />}
         {activeTab === 'invoices' && <AdminInvoices />}
+        {activeTab === 'kit-products' && <AdminKitProducts />}
       </main>
     </div>
   );
