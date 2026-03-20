@@ -821,6 +821,20 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
           </div>
 
           <div className="space-y-4">
+            {/* Awaiting approval — shown when user has a pending join request */}
+            {pendingRequests.length > 0 && (
+              <div className="border border-warmth-200 bg-warmth-50 rounded-xl p-4 text-center">
+                <Clock className="w-6 h-6 text-warmth-500 mx-auto mb-2" />
+                <p className="text-sm font-semibold text-gray-800">Awaiting Approval</p>
+                {pendingRequests.map(r => (
+                  <p key={r.group_id} className="text-xs text-gray-500 mt-1">
+                    Your request to join <span className="font-semibold">{r.group_name}</span> is pending.
+                    You'll be notified when the head approves.
+                  </p>
+                ))}
+              </div>
+            )}
+
             {/* Create group */}
             <div className="border border-grove-200 rounded-xl p-4 bg-grove-50/40">
               <p className="text-sm font-semibold text-gray-800 mb-1">Start a group</p>
@@ -1046,18 +1060,6 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
 
   return (
     <>
-      {/* Awaiting Approval UI if user has pending requests and is not in a group */}
-      {pendingRequests.length > 0 && !group && (
-        <div className="border border-warmth-200 bg-warmth-50 rounded-xl p-4 text-center mb-4">
-          <Clock className="w-6 h-6 text-warmth-500 mx-auto mb-2" />
-          <p className="text-sm font-semibold text-gray-800">Awaiting Approval</p>
-          {pendingRequests.map(r => (
-            <p key={r.group_id} className="text-xs text-gray-500 mt-1">
-              Your request to join <span className="font-semibold">{r.group_name}</span> is pending.<br />You'll be notified when the head approves.
-            </p>
-          ))}
-        </div>
-      )}
       <div className="bg-white rounded-2xl shadow-md overflow-hidden">
         {/* Header */}
         <div className="bg-gradient-to-r from-grove-700 to-grove-600 px-5 py-4">
@@ -1443,7 +1445,7 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
               {members.length > 0 && isHead && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   {members.map(member => {
-                    const memberPlants = plants.filter(p => p.group_member_id === member.id);
+                    const memberPlants = groupPlants.filter(p => p.group_member_id === member.id);
                     const reminded = remindCooldown.has(member.id);
                     return (
                       <div key={member.id} className="border border-gray-100 rounded-xl p-3 hover:border-grove-200 hover:bg-grove-50/30 transition-colors">
@@ -1748,17 +1750,26 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                         {joinRequests.map(req => (
                           <div key={req.id} className="px-4 py-3 bg-white">
                             <div className="flex items-start justify-between gap-2 mb-2">
-                              <div>
-                                <div className="flex items-center gap-1.5">
-                                  <p className="text-sm font-semibold text-gray-900">{req.requester_name}</p>
-                                  {req.invite_id && (
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-grove-100 text-grove-700 font-semibold">via invite</span>
-                                  )}
+                              <div className="flex items-start gap-2.5 min-w-0">
+                                {req.requester_avatar ? (
+                                  <img src={req.requester_avatar} alt={req.requester_name} className="w-9 h-9 rounded-full object-cover flex-shrink-0 ring-1 ring-grove-200" />
+                                ) : (
+                                  <div className="w-9 h-9 rounded-full bg-gradient-to-br from-grove-400 to-warmth-400 flex items-center justify-center flex-shrink-0">
+                                    <span className="text-xs font-bold text-white">{getInitials(req.requester_name || '?')}</span>
+                                  </div>
+                                )}
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <p className="text-sm font-semibold text-gray-900">{req.requester_name}</p>
+                                    {req.invite_id && (
+                                      <span className="text-[9px] px-1.5 py-0.5 rounded-full bg-grove-100 text-grove-700 font-semibold">via invite</span>
+                                    )}
+                                  </div>
+                                  {req.message && <p className="text-xs text-gray-500 mt-0.5">Role: {req.message}</p>}
+                                  <p className="text-[10px] text-gray-400 mt-1">
+                                    {new Date(req.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
+                                  </p>
                                 </div>
-                                {req.message && <p className="text-xs text-gray-500 mt-0.5">Role: {req.message}</p>}
-                                <p className="text-[10px] text-gray-400 mt-1">
-                                  {new Date(req.created_at).toLocaleDateString('en-NG', { day: 'numeric', month: 'short' })}
-                                </p>
                               </div>
                               <div className="flex gap-1.5 flex-shrink-0">
                                 <button
