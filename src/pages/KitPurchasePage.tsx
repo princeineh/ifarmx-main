@@ -104,6 +104,7 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
   const [programs, setPrograms] = useState<Program[]>([]);
   const [selectedProgramId, setSelectedProgramId] = useState<string>('');
   const [loadingPrograms, setLoadingPrograms] = useState(isOrg);
+  const [selectedPlan, setSelectedPlan] = useState<number | null>(null);
   useEffect(() => {
     loadProducts();
   }, []);
