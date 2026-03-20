@@ -13,7 +13,6 @@ interface KitPurchasePageProps {
   onNavigate: (page: string, data?: any) => void;
 }
 
-// Remove KIT_PRICE, plans, etc. for product listing
 interface KitProduct {
   id: string;
   name: string;
@@ -21,7 +20,49 @@ interface KitProduct {
   description: string;
   image_url: string;
   created_at: string;
+  items?: string[];
+  badge?: string;
 }
+
+const DEFAULT_PRODUCTS: KitProduct[] = [
+  {
+    id: 'standard-kit',
+    name: 'Standard Kit',
+    price: 24999,
+    description: '3x everything in Nano Kit + extras',
+    image_url: '/1000202696_(1).jpg',
+    created_at: '2026-01-01T00:00:00Z',
+    items: [
+      '3x Organic Manure',
+      '3x Refined Sand',
+      '3x Grower Bag',
+      '1x Disposable Gloves',
+      '1x Quick Start Pamphlet',
+      '1x iFarmX Manual',
+      '3x Tenera Sprouted Seeds (NIFOR EWS)',
+      'NIFOR Reference Book',
+      'Water Sprayer',
+    ],
+  },
+  {
+    id: 'nano-kit',
+    name: 'Nano Kit',
+    price: 9999,
+    description: 'Everything needed + AI Agronomist',
+    image_url: '/Oil_Palm_Revolution_Kit_Family.jpg',
+    created_at: '2026-01-01T00:00:00Z',
+    badge: '⚡ NANO KIT',
+    items: [
+      'Organic Manure',
+      'Refined Sand',
+      'Grower Bag',
+      'Disposable Gloves',
+      'Quick Start Pamphlet',
+      'Water Sprayer',
+      'Tenera Sprouted Seed (NIFOR EWS)',
+    ],
+  },
+];
 
 const INDIVIDUAL_PLANS = [
   { name: 'Solo Farmer', kits: 1, discount: 0, popular: false },
@@ -111,9 +152,12 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
 
   const loadProducts = async () => {
     const { data, error } = await supabase.from('kit_products').select('*').order('created_at', { ascending: false });
-    if (!error && data) {
+    if (!error && data && data.length > 0) {
       setProducts(data);
-      if (data.length > 0) setSelectedProductId(data[0].id);
+      setSelectedProductId(data[0].id);
+    } else {
+      setProducts(DEFAULT_PRODUCTS);
+      setSelectedProductId(DEFAULT_PRODUCTS[0].id);
     }
   };
 
@@ -482,32 +526,72 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
         )}
 
         <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
-          <h2 className="text-lg font-bold text-gray-900 mb-4">Kit Store Products</h2>
-          {products.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-10 text-center text-gray-500">
-              <Image className="w-10 h-10 mb-3 text-gray-300" />
-              <p className="text-sm font-medium text-gray-600">No products available yet</p>
-              <p className="text-xs text-gray-400 mt-1">Admin needs to add kit products in the Admin Dashboard → Kit Products tab.</p>
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {products.map(p => (
+          <h2 className="text-lg font-bold text-gray-900 mb-1">Select the kit that best fits your farming goals</h2>
+          <p className="text-sm text-gray-500 mb-5">Select the kit that best fits your farming goals</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            {products.map(p => {
+              const isSelected = selectedProductId === p.id;
+              return (
                 <button
                   key={p.id}
                   onClick={() => { setSelectedProductId(p.id); setQuantity(1); }}
-                  className={`border rounded-xl p-4 flex gap-4 items-center transition-all ${selectedProductId === p.id ? 'border-emerald-500 bg-emerald-50 shadow-md' : 'border-gray-200 hover:border-emerald-300 hover:shadow-sm'}`}
+                  className={`relative border-2 rounded-2xl overflow-hidden text-left transition-all ${isSelected ? 'border-blue-500 shadow-lg' : 'border-gray-200 hover:border-emerald-300 hover:shadow-sm'}`}
                 >
-                  <img src={p.image_url} alt={p.name} className="w-20 h-20 object-cover rounded" />
-                  <div className="flex-1 text-left">
-                    <div className="font-bold text-gray-900 text-lg mb-1">{p.name}</div>
-                    <div className="text-emerald-700 text-xl font-bold mb-1">N{p.price.toLocaleString()} <span className="text-sm text-gray-500 font-normal">/ kit</span></div>
-                    <div className="text-xs text-gray-500">{p.description}</div>
+                  {/* Check badge */}
+                  {isSelected && (
+                    <div className="absolute top-3 right-3 z-10 w-8 h-8 bg-blue-500 rounded-full flex items-center justify-center shadow">
+                      <Check className="w-5 h-5 text-white" />
+                    </div>
+                  )}
+
+                  {/* Kit badge (e.g. NANO KIT) */}
+                  {p.badge && !isSelected && (
+                    <div className="absolute top-3 right-3 z-10">
+                      <span className="px-3 py-1 bg-gray-900 text-white text-xs font-bold rounded-full flex items-center gap-1">
+                        {p.badge}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Image */}
+                  <div className="w-full h-48 overflow-hidden bg-gray-100">
+                    <img src={p.image_url} alt={p.name} className="w-full h-full object-cover" />
                   </div>
-                  {selectedProductId === p.id && <Check className="w-6 h-6 text-emerald-500" />}
+
+                  {/* Info */}
+                  <div className="p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <div className="w-8 h-8 bg-emerald-100 rounded-lg flex items-center justify-center">
+                        <ShoppingBag className="w-4 h-4 text-emerald-600" />
+                      </div>
+                      <div>
+                        <div className="font-bold text-gray-900">{p.name}</div>
+                        <div className="text-xs text-gray-500">{p.description}</div>
+                      </div>
+                    </div>
+
+                    <div className="text-2xl font-bold text-gray-900 mb-3">
+                      N{p.price.toLocaleString()} <span className="text-sm text-gray-500 font-normal">/ kit</span>
+                    </div>
+
+                    {p.items && p.items.length > 0 && (
+                      <ul className="space-y-1">
+                        {p.items.slice(0, 5).map(item => (
+                          <li key={item} className="flex items-center gap-2 text-sm text-gray-700">
+                            <Check className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                            {item}
+                          </li>
+                        ))}
+                        {p.items.length > 5 && (
+                          <li className="text-sm text-gray-400 pl-6">+{p.items.length - 5} more items</li>
+                        )}
+                      </ul>
+                    )}
+                  </div>
                 </button>
-              ))}
-            </div>
-          )}
+              );
+            })}
+          </div>
         </div>
 
         {!isOrg && appliedDiscount > 0 && (
