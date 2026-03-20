@@ -652,7 +652,7 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
           <FamilyDynastyPanel
             plants={plants}
             onNavigate={onNavigate}
-            onGroupFound={(hasGroup) => { if (hasGroup) setIsLinkedToFamilyGroup(true); }}
+            onGroupFound={(hasGroup) => { setIsLinkedToFamilyGroup(hasGroup); }}
           />
         </div>
 

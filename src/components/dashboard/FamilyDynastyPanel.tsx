@@ -476,7 +476,7 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
     const joinerName = profile?.display_name || user.email || 'Family Member';
 
     // Create a pending join request — head must approve before member is added
-    await supabase.from('family_join_requests').insert({
+    const { error: insertError } = await supabase.from('family_join_requests').insert({
       group_id: joinPreview.groupId,
       requester_user_id: user.id,
       message: joinRelationship.trim() || null,
@@ -484,16 +484,23 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
       status: 'pending',
     });
 
+    if (insertError) {
+      setJoinError('Could not send request. Please try again.');
+      setJoinLoading(false);
+      return;
+    }
+
     // Notify the head
     const { data: grpData } = await supabase
       .from('farming_groups')
-      .select('head_user_id')
+      .select('head_user_id, user_id')
       .eq('id', joinPreview.groupId)
       .maybeSingle();
 
-    if (grpData?.head_user_id) {
+    const headId = grpData?.head_user_id || grpData?.user_id;
+    if (headId) {
       createNotification(
-        grpData.head_user_id,
+        headId,
         'system',
         'Join Request 🔔',
         `${joinerName} wants to join ${joinPreview.groupName}${joinRelationship.trim() ? ' as ' + joinRelationship.trim() : ''}. Open the Members tab to approve.`
@@ -561,17 +568,11 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
     setKitActivating(true);
     const now = new Date().toISOString();
 
-    // Mark kit code as used
-    await supabase
-      .from('kit_codes')
-      .update({ used: true, user_id: user.id, activated_at: now })
-      .eq('id', activatingKit.id);
-
     const selectedMember = members.find(m => m.id === kitAssignMemberId) || null;
     const memberName = selectedMember?.name || displayName;
 
-    // Create plant record
-    await supabase.from('plants').insert({
+    // Create plant record first — this is the most critical step
+    const { error: plantError } = await supabase.from('plants').insert({
       user_id: user.id,
       kit_code_id: activatingKit.id,
       program_id: activatingKit.programId,
@@ -582,6 +583,18 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
       farming_group_id: group.id,
       group_member_id: selectedMember?.id || null,
     });
+
+    if (plantError) {
+      setKitActivating(false);
+      alert('Failed to activate kit. Please try again.');
+      return;
+    }
+
+    // Mark kit code as used
+    await supabase
+      .from('kit_codes')
+      .update({ used: true, user_id: user.id, activated_at: now })
+      .eq('id', activatingKit.id);
 
     // Update group total seeds
     await supabase
@@ -646,7 +659,7 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
       .maybeSingle();
 
     if (!existing) {
-      await supabase.from('group_members').insert({
+      const { error: memberError } = await supabase.from('group_members').insert({
         group_id: group.id,
         name: req.requester_name || 'Family Member',
         linked_user_id: req.requester_user_id,
@@ -654,6 +667,10 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
         seeds_allocated: 0,
         is_custodian_child: false,
       });
+      if (memberError) {
+        alert(`Failed to add member: ${memberError.message}. Please run the latest SQL migration in Supabase.`);
+        return;
+      }
     }
 
     // Notify the joiner they were approved
