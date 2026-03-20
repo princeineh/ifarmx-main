@@ -868,8 +868,8 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
               </div>
             )}
 
-            {/* Create group */}
-            <div className="border border-grove-200 rounded-xl p-4 bg-grove-50/40">
+            {/* Create group — only family-type users can start groups */}
+            {profile?.user_type === 'family' && <div className="border border-grove-200 rounded-xl p-4 bg-grove-50/40">
               <p className="text-sm font-semibold text-gray-800 mb-1">Start a group</p>
               <p className="text-xs text-gray-500 mb-3">Create a family, church group, friends clique, or any collective — and farm together.</p>
 
@@ -934,7 +934,7 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
 
             {/* Join group */}
             <div className="border border-warmth-200 rounded-xl overflow-hidden">
@@ -988,13 +988,25 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                                   </p>
                                 </div>
                               </div>
-                              <input
-                                type="text"
+                              <select
                                 value={joinRelationship}
                                 onChange={e => setJoinRelationship(e.target.value)}
-                                placeholder="Your role e.g. Son, Daughter, Spouse (optional)"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-grove-500 focus:border-transparent"
-                              />
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-grove-500 focus:border-transparent bg-white"
+                              >
+                                <option value="">Select your role (optional)</option>
+                                <option>Son</option>
+                                <option>Daughter</option>
+                                <option>Spouse / Partner</option>
+                                <option>Father</option>
+                                <option>Mother</option>
+                                <option>Brother</option>
+                                <option>Sister</option>
+                                <option>Uncle / Aunt</option>
+                                <option>Cousin</option>
+                                <option>Friend</option>
+                                <option>Colleague</option>
+                                <option>Other</option>
+                              </select>
                               <div className="flex gap-2">
                                 <button
                                   onClick={handleConfirmJoin}
@@ -1578,15 +1590,26 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                         <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                           {editingRelationshipId === member.id ? (
                             <div className="flex items-center gap-1">
-                              <input
+                              <select
                                 autoFocus
-                                type="text"
                                 value={editingRelationshipValue}
                                 onChange={e => setEditingRelationshipValue(e.target.value)}
-                                placeholder="e.g. Son, Daughter"
-                                className="w-28 px-1.5 py-0.5 border border-grove-300 rounded text-[11px] focus:ring-1 focus:ring-grove-400 focus:border-transparent"
-                                onKeyDown={e => { if (e.key === 'Enter') handleSaveRelationship(member.id); if (e.key === 'Escape') setEditingRelationshipId(null); }}
-                              />
+                                className="w-32 px-1.5 py-0.5 border border-grove-300 rounded text-[11px] focus:ring-1 focus:ring-grove-400 focus:border-transparent bg-white"
+                              >
+                                <option value="">Select role</option>
+                                <option>Son</option>
+                                <option>Daughter</option>
+                                <option>Spouse / Partner</option>
+                                <option>Father</option>
+                                <option>Mother</option>
+                                <option>Brother</option>
+                                <option>Sister</option>
+                                <option>Uncle / Aunt</option>
+                                <option>Cousin</option>
+                                <option>Friend</option>
+                                <option>Colleague</option>
+                                <option>Other</option>
+                              </select>
                               <button onClick={() => handleSaveRelationship(member.id)} disabled={savingRelationship} className="p-0.5 text-grove-600 hover:text-grove-800">
                                 {savingRelationship ? <Loader2 className="w-3 h-3 animate-spin" /> : <Check className="w-3 h-3" />}
                               </button>

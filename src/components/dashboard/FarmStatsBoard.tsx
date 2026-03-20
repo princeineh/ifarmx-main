@@ -203,11 +203,10 @@ export function SoloFarmStats({ displayName, plants, weeklyLogs, kitCount, onBuy
     );
   }
 
-  // Build one Farmer per plant (each plant = 1 kit = 3 seeds)
-  const farmers: Farmer[] = plants.map(plant => {
-    const plantLogs = weeklyLogs.filter(l => l.plant_id === plant.id);
-    return buildFarmer(plant.name, [plant], plantLogs);
-  });
+  // Aggregate all plants into one farmer row for the user
+  const farmers: Farmer[] = plants.length > 0
+    ? [buildFarmer(displayName, plants, weeklyLogs)]
+    : [];
 
   return (
     <FarmStatsBoard

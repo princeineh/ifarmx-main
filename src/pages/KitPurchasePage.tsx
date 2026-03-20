@@ -43,8 +43,9 @@ const ORG_PLANS = [
   { name: 'Enterprise', kits: 100, discount: 15, popular: false },
 ];
 
-const calculatePrice = (kits: number, discount: number): number => {
-  const basePrice = KIT_PRICE * kits;
+// Price is derived from the selected product; this helper is unused but kept for reference
+const calculatePrice = (unitPrice: number, kits: number, discount: number): number => {
+  const basePrice = unitPrice * kits;
   return Math.round(basePrice * (1 - discount / 100));
 };
 
@@ -765,10 +766,10 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
             </div>
             {appliedDiscount > 0 && (
               <div className="flex items-center justify-between text-xs">
-                <span className="text-gray-500">Regular price: N{(KIT_PRICE * quantity).toLocaleString()}</span>
+                <span className="text-gray-500">Regular price: N{((selectedProduct?.price ?? 0) * quantity).toLocaleString()}</span>
                 <span className="font-semibold text-emerald-600 flex items-center gap-1">
                   <UsersRound className="w-3 h-3" />
-                  Save N{((KIT_PRICE * quantity) - totalPrice).toLocaleString()} ({appliedDiscount}% off)
+                  Save N{(((selectedProduct?.price ?? 0) * quantity) - totalPrice).toLocaleString()} ({appliedDiscount}% off)
                 </span>
               </div>
             )}
