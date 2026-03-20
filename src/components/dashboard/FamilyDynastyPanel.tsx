@@ -480,16 +480,30 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
     const joinerName = profile?.display_name || user.email || 'Family Member';
 
     // Create a pending join request — head must approve before member is added
-    const { error: insertError } = await supabase.from('family_join_requests').insert({
+    let finalError: any = null;
+    const { error: err1 } = await supabase.from('family_join_requests').insert({
       group_id: joinPreview.groupId,
       requester_user_id: user.id,
       message: joinRelationship.trim() || null,
       invite_id: joinPreview.inviteId,
       status: 'pending',
     });
+    finalError = err1;
 
-    if (insertError) {
-      setJoinError('Could not send request. Please try again.');
+    // Fallback: if invite_id column doesn't exist yet (SQL migration pending), retry without it
+    if (finalError && (finalError.message?.includes('invite_id') || finalError.code === '42703')) {
+      const { error: err2 } = await supabase.from('family_join_requests').insert({
+        group_id: joinPreview.groupId,
+        requester_user_id: user.id,
+        message: joinRelationship.trim() || null,
+        status: 'pending',
+      });
+      finalError = err2;
+    }
+
+    if (finalError) {
+      console.error('Join request insert failed:', finalError);
+      setJoinError(`Could not send request: ${finalError.message}`);
       setJoinLoading(false);
       return;
     }
@@ -672,7 +686,8 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
         is_custodian_child: false,
       });
       if (memberError) {
-        alert(`Failed to add member: ${memberError.message}. Please run the latest SQL migration in Supabase.`);
+        console.error('group_members INSERT failed:', memberError);
+        alert(`Cannot add member — database permission error:\n\n"${memberError.message}"\n\nYou must run the SQL migration in Supabase → SQL Editor.\nFile: supabase/migrations/20260320000000_final_family_rls_fix.sql`);
         return;
       }
     }
