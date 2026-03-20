@@ -4,7 +4,8 @@ import { useAuth } from '../contexts/AuthContext';
 import {
   Leaf, Plus, Menu, X, Users as UsersIcon, Sprout,
   UsersRound, Store, MessageSquare, Sun, Package, Globe, Shield,
-  Key, ArrowRight, Trophy, Copy, Check, Timer, Mail, FlaskConical, Rocket
+  Key, ArrowRight, Trophy, Copy, Check, Timer, Mail, FlaskConical, Rocket,
+  ChevronDown, ChevronUp
 } from 'lucide-react';
 import type { Plant, CareLog, UserType } from '../types/database';
 import { DailyReminder } from '../components/dashboard/DailyReminder';
@@ -55,6 +56,8 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
   const spotlightPathRef = useRef<UserType | null>(null);
   const [reservation, setReservation] = useState<{ kit_count: string; created_at: string; join_as?: string; slots?: number } | null>(null);
   const [isLinkedToFamilyGroup, setIsLinkedToFamilyGroup] = useState(false);
+  const [statsExpanded, setStatsExpanded] = useState(true);
+  const [familyExpanded, setFamilyExpanded] = useState(true);
   const [testBannerDismissed, setTestBannerDismissed] = useState(() =>
     sessionStorage.getItem('ifarmx_test_banner_dismissed') === '1'
   );
@@ -637,25 +640,50 @@ export function DashboardPage({ onNavigate, showTour: showTourProp }: DashboardP
           </div>
         )}
 
-        <div data-tour="kit-overview">
-          <SoloFarmStats
-            displayName={displayName}
-            plants={plants}
-            weeklyLogs={weeklyLogs}
-            kitCount={kitCount}
-            onBuyKit={() => onNavigate('kit-purchase')}
-            onActivateKit={() => onNavigate('activate')}
-          />
-        </div>
+        {/* Solo stats — hidden for family/group users (they use FamilyDynastyPanel) */}
+        {profile?.user_type !== 'family' && !isLinkedToFamilyGroup && (
+          <div data-tour="kit-overview">
+            <div
+              className="flex items-center justify-between px-1 mb-2 cursor-pointer select-none"
+              onClick={() => setStatsExpanded(v => !v)}
+            >
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">My Farm Stats</span>
+              {statsExpanded
+                ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </div>
+            {statsExpanded && (
+              <SoloFarmStats
+                displayName={displayName}
+                plants={plants}
+                weeklyLogs={weeklyLogs}
+                kitCount={kitCount}
+                onBuyKit={() => onNavigate('kit-purchase')}
+                onActivateKit={() => onNavigate('activate')}
+              />
+            )}
+          </div>
+        )}
 
-        {/* Show family panel for all non-organization users */}
+        {/* Family / group panel — all non-organization users */}
         {profile?.user_type !== 'organization' && (
           <div data-tour="family-panel">
-            <FamilyDynastyPanel
-              plants={plants}
-              onNavigate={onNavigate}
-              onGroupFound={(hasGroup) => { setIsLinkedToFamilyGroup(hasGroup); }}
-            />
+            <div
+              className="flex items-center justify-between px-1 mb-2 cursor-pointer select-none"
+              onClick={() => setFamilyExpanded(v => !v)}
+            >
+              <span className="text-xs font-semibold text-gray-400 uppercase tracking-wider">Family Farm Dynasty</span>
+              {familyExpanded
+                ? <ChevronUp className="w-4 h-4 text-gray-400" />
+                : <ChevronDown className="w-4 h-4 text-gray-400" />}
+            </div>
+            {familyExpanded && (
+              <FamilyDynastyPanel
+                plants={plants}
+                onNavigate={onNavigate}
+                onGroupFound={(hasGroup) => { setIsLinkedToFamilyGroup(hasGroup); }}
+              />
+            )}
           </div>
         )}
 

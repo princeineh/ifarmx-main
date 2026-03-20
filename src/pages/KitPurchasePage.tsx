@@ -563,7 +563,7 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
                 {ORG_PLANS.map((plan) => {
-                  const planPrice = calculatePrice(plan.kits, plan.discount);
+                  const planPrice = calculatePrice(selectedProduct?.price ?? 0, plan.kits, plan.discount);
                   const pricePerKit = Math.round(planPrice / plan.kits);
                   const isSelected = quantity === plan.kits;
 
@@ -624,7 +624,7 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {INDIVIDUAL_PLANS.map((plan) => {
-                  const planPrice = calculatePrice(plan.kits, plan.discount);
+                  const planPrice = calculatePrice(selectedProduct?.price ?? 0, plan.kits, plan.discount);
                   const isSelected = selectedPlan === plan.kits || quantity === plan.kits;
 
                   return (
@@ -661,7 +661,7 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
               </h4>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 {FAMILY_PLANS.map((plan) => {
-                  const planPrice = calculatePrice(plan.kits, plan.discount);
+                  const planPrice = calculatePrice(selectedProduct?.price ?? 0, plan.kits, plan.discount);
                   const pricePerKit = Math.round(planPrice / plan.kits);
                   const isSelected = selectedPlan === plan.kits || quantity === plan.kits;
 
