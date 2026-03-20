@@ -326,17 +326,13 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
         }
       }
 
-      // Check if current user has any pending join requests (for "Awaiting Approval" UI)
+      // Check if current user has pending join requests (SECURITY DEFINER bypasses RLS)
       if (user) {
-        const { data: myPending } = await supabase
-          .from('family_join_requests')
-          .select('group_id, status, created_at, farming_groups(group_name)')
-          .eq('requester_user_id', user.id)
-          .eq('status', 'pending');
+        const { data: myPending } = await supabase.rpc('get_user_pending_requests');
         setPendingRequests(
           (myPending || []).map((r: any) => ({
             group_id: r.group_id,
-            group_name: r.farming_groups?.group_name || 'a family',
+            group_name: r.group_name || 'a family',
             created_at: r.created_at,
           }))
         );
@@ -504,10 +500,11 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
       );
     }
 
-    setJoinSuccess(`Request sent to ${joinPreview.groupName}! You'll be notified once the head approves.`);
     setJoinPreview(null);
     setJoinRelationship('');
     setJoinLoading(false);
+    // Reload so "Awaiting Approval" card shows immediately
+    await loadData();
   };
 
   // ── Head: save relationship for a member ──────────────────────────────────────
@@ -1006,40 +1003,13 @@ export function FamilyDynastyPanel({ plants, onNavigate, onGroupFound }: FamilyD
                           )}
                         </div>
 
-                        {/* Request option */}
-                        <div>
-                          <p className="text-xs font-semibold text-gray-700 mb-2">Option B — Send a request</p>
-                          {requestSent ? (
-                            <p className="text-xs text-grove-700 flex items-center gap-1.5">
-                              <CheckCircle2 className="w-4 h-4" /> Your request has been sent! The family head will review it.
-                            </p>
-                          ) : (
-                            <div className="space-y-2">
-                              <textarea
-                                value={requestMessage}
-                                onChange={e => setRequestMessage(e.target.value)}
-                                placeholder="Add a short message (optional) — e.g. 'It's Adaeze, Mama's daughter'"
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-grove-500 focus:border-transparent resize-none"
-                                rows={2}
-                              />
-                              <p className="text-xs text-gray-400">
-                                Note: You'll need the family group ID or name to send a request. Ask your family head.
-                              </p>
-                              {/* Simple request to any pending invite they can find */}
-                              <button
-                                onClick={() => {
-                                  // Without knowing the group ID, we just show a message
-                                  // In real flow the group ID comes from a share link or head shares it
-                                  setRequestSent(true);
-                                }}
-                                disabled={requestLoading}
-                                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-grove-600 text-white text-sm font-semibold hover:bg-grove-700 disabled:opacity-50 transition-colors"
-                              >
-                                {requestLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
-                                Send Request
-                              </button>
-                            </div>
-                          )}
+                        {/* How to get a code */}
+                        <div className="bg-gray-50 rounded-xl p-3">
+                          <p className="text-xs font-semibold text-gray-700 mb-1">Don't have a code?</p>
+                          <p className="text-xs text-gray-500">
+                            Ask your family head to generate an invite code from their Members tab and share it with you.
+                            The code looks like <span className="font-mono font-bold text-grove-700">PALM####</span>.
+                          </p>
                         </div>
                       </>
                     )}
