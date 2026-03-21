@@ -49,7 +49,7 @@ const DEFAULT_PRODUCTS: KitProduct[] = [
     name: 'Nano Kit',
     price: 9999,
     description: 'Everything needed + AI Agronomist',
-    image_url: '/Oil_Palm_Revolution_Kit_Family.jpg',
+    image_url: '/nano-kit.jpg',
     created_at: '2026-01-01T00:00:00Z',
     badge: '⚡ NANO KIT',
     items: [
@@ -224,7 +224,6 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
           user_id: user.id,
           order_number: orderNumber,
           kit_type: selectedProduct?.name || 'standard',
-          product_id: selectedProductId,
           quantity,
           unit_price: selectedProduct?.price || 0,
           total_price: totalPrice,
@@ -705,110 +704,6 @@ export function KitPurchasePage({ onNavigate }: KitPurchasePageProps) {
           </>
         )}
 
-        {!isOrg && (
-          <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
-            <h3 className="text-lg font-bold text-gray-900 mb-2">Choose Your Plan</h3>
-            <p className="text-sm text-gray-600 mb-6">Start solo or get family discounts with 5+ kits</p>
-
-            <div className="mb-6">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <span className="w-6 h-6 bg-emerald-100 rounded-full flex items-center justify-center text-emerald-600 text-xs font-bold">1</span>
-                Individual Plans
-              </h4>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                {INDIVIDUAL_PLANS.map((plan) => {
-                  const planPrice = calculatePrice(selectedProduct?.price ?? 0, plan.kits, plan.discount);
-                  const isSelected = selectedPlan === plan.kits || quantity === plan.kits;
-
-                  return (
-                    <button
-                      key={plan.name}
-                      onClick={() => {
-                        setSelectedPlan(plan.kits);
-                        setQuantity(plan.kits);
-                      }}
-                      className={`relative border-2 rounded-xl p-3 text-left transition-all ${
-                        isSelected
-                          ? 'border-emerald-500 bg-emerald-50 shadow-md'
-                          : 'border-gray-200 hover:border-emerald-300 hover:shadow-sm'
-                      }`}
-                    >
-                      <div className="mb-2">
-                        <h4 className="font-bold text-gray-900 text-sm">{plan.name}</h4>
-                        <p className="text-xs text-gray-500">{plan.kits} kit{plan.kits !== 1 ? 's' : ''}</p>
-                      </div>
-                      <div className="text-xl font-bold text-gray-900">
-                        N{planPrice.toLocaleString()}
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="mb-6">
-              <h4 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                <span className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-bold">2</span>
-                Family / Group Plans
-                <span className="ml-auto text-xs text-emerald-600 font-medium">Save up to 15%</span>
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                {FAMILY_PLANS.map((plan) => {
-                  const planPrice = calculatePrice(selectedProduct?.price ?? 0, plan.kits, plan.discount);
-                  const pricePerKit = Math.round(planPrice / plan.kits);
-                  const isSelected = selectedPlan === plan.kits || quantity === plan.kits;
-
-                  return (
-                    <button
-                      key={plan.name}
-                      onClick={() => {
-                        setSelectedPlan(plan.kits);
-                        setQuantity(plan.kits);
-                      }}
-                      className={`relative border-2 rounded-xl p-4 text-left transition-all ${
-                        isSelected
-                          ? 'border-emerald-500 bg-emerald-50 shadow-md'
-                          : 'border-gray-200 hover:border-emerald-300 hover:shadow-sm'
-                      }`}
-                    >
-                      {plan.popular && (
-                        <div className="absolute -top-2.5 left-1/2 -translate-x-1/2">
-                          <span className="px-3 py-0.5 bg-amber-500 text-white text-xs font-bold rounded-full shadow-sm">
-                            POPULAR
-                          </span>
-                        </div>
-                      )}
-
-                      <div className="mb-3">
-                        <h4 className="font-bold text-gray-900 text-sm mb-1">{plan.name}</h4>
-                        <p className="text-xs text-gray-500">{plan.kits} kits</p>
-                      </div>
-
-                      <div className="mb-2">
-                        <div className="text-2xl font-bold text-gray-900">
-                          N{planPrice.toLocaleString()}
-                        </div>
-                        <div className="text-xs text-gray-500">
-                          N{pricePerKit.toLocaleString()} per kit
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1 mt-2">
-                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-700 text-xs font-semibold rounded">
-                          Save {plan.discount}%
-                        </span>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="border-t border-gray-100 pt-4">
-              <p className="text-xs text-gray-500 mb-3">Or customize your quantity below:</p>
-            </div>
-          </div>
-        )}
 
         <div className="bg-white rounded-2xl shadow-md p-6 mb-6">
           <div className="flex items-center justify-between mb-6">
